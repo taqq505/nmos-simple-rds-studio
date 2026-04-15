@@ -52,7 +52,7 @@ jobs:
       - name: Enable Conan
         shell: bash
         run: |
-          echo "CMAKE_EXTRA_ARGS=-DCMAKE_PROJECT_TOP_LEVEL_INCLUDES:STRING=\"third_party/cmake/conan_provider.cmake\" -DCONAN_INSTALL_ARGS:STRING=\"--build=missing\" -DNMOS_CPP_BUILD_LLDP=OFF -DNMOS_CPP_BUILD_TESTS=OFF" >> $GITHUB_ENV
+          echo "CMAKE_EXTRA_ARGS=-DCMAKE_PROJECT_TOP_LEVEL_INCLUDES:STRING=\"third_party/cmake/conan_provider.cmake\" -DCONAN_INSTALL_ARGS:STRING=\"--build=missing;--options;cpprestsdk/*:http_client_impl=asio;--options;cpprestsdk/*:http_listener_impl=asio\" -DNMOS_CPP_BUILD_LLDP=OFF -DNMOS_CPP_BUILD_TESTS=OFF" >> $GITHUB_ENV
 
       - name: Detect Conan profile
         run: conan profile detect --force
