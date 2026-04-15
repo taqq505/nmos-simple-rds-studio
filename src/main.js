@@ -169,23 +169,30 @@ function startRds(config, onProgress) {
   }
 
   const args = buildRdsArgs(config);
+  console.log('[RDS] binary:', binaryPath);
+  console.log('[RDS] args:', args);
   rdsProcess = spawn(binaryPath, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+  console.log('[RDS] spawned pid:', rdsProcess.pid);
 
   rdsProcess.stdout.on('data', (data) => {
     const text = data.toString();
+    console.log('[RDS stdout]', text);
     onProgress({ type: 'stdout', message: text });
   });
 
   rdsProcess.stderr.on('data', (data) => {
     const text = data.toString();
+    console.log('[RDS stderr]', text);
     onProgress({ type: 'stderr', message: text });
   });
 
   rdsProcess.on('error', (err) => {
+    console.log('[RDS error]', err.message);
     onProgress({ type: 'error', message: err.message });
   });
 
   rdsProcess.on('exit', (code) => {
+    console.log('[RDS exit]', code);
     onProgress({ type: 'exit', code });
     rdsProcess = null;
   });

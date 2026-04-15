@@ -597,43 +597,54 @@ async function runLocalLaunch(steps, config) {
   setStepState('process-started', 'active');
   let t1 = startTimer('process-started');
 
-  window.api.startRds(config); // fire-and-forget; we track via onRdsProgress
+  window.api.startRds(config); // fire-and-forget
 
-  let processStarted = false;
-  let rdsInitDone = false;
-  let t2 = 0;
+  // Wait for any output (process alive) or timeout after 5s
+  await new Promise((resolve) => {
+    let resolved = false;
+    const timeout = setTimeout(() => {
+      if (!resolved) { resolved = true; resolve(); }
+    }, 5000);
 
-  unsubRdsProgress = window.api.onRdsProgress(async (event) => {
-    if (event.type === 'error') {
-      stopTimer('process-started');
-      stopTimer('rds-init');
-      stopTimer('query-api');
-      stopTimer('mdns-announce');
-      setStepState('process-started', 'error');
-      onLaunchError(event.message);
-      if (unsubRdsProgress) { unsubRdsProgress(); unsubRdsProgress = null; }
-      return;
-    }
-
-    if (!processStarted && (event.type === 'stdout' || event.type === 'stderr')) {
-      processStarted = true;
-      stopTimer('process-started');
-      setStepState('process-started', 'done', (Date.now() - t1) / 1000);
-
-      // Step 2: Waiting for RDS init
-      setStepState('rds-init', 'active');
-      t2 = startTimer('rds-init');
-    }
-
-    if (!rdsInitDone && event.message && event.message.includes('Ready for connections')) {
-      rdsInitDone = true;
-      stopTimer('rds-init');
-      setStepState('rds-init', 'done', (Date.now() - t2) / 1000);
-
-      if (unsubRdsProgress) { unsubRdsProgress(); unsubRdsProgress = null; }
-      await continueLocalChecks(config, steps);
-    }
+    unsubRdsProgress = window.api.onRdsProgress((event) => {
+      if (event.type === 'error') {
+        clearTimeout(timeout);
+        stopTimer('process-started');
+        onLaunchError(event.message);
+        setStepState('process-started', 'error');
+        if (unsubRdsProgress) { unsubRdsProgress(); unsubRdsProgress = null; }
+        resolved = true; resolve();
+        return;
+      }
+      if (!resolved && (event.type === 'stdout' || event.type === 'stderr' || event.type === 'exit')) {
+        clearTimeout(timeout);
+        resolved = true; resolve();
+      }
+    });
   });
+
+  if (document.getElementById('step-process-started')?.dataset.state === 'error') return;
+
+  stopTimer('process-started');
+  setStepState('process-started', 'done', (Date.now() - t1) / 1000);
+
+  // Step 2: Poll Query API until ready (replaces "Ready for connections" text detection)
+  setStepState('rds-init', 'active');
+  let t2 = startTimer('rds-init');
+
+  const base = `http://${config.host_address === '0.0.0.0' ? '127.0.0.1' : config.host_address}:${config.query_port}`;
+  const rdsReady = await pollEndpoint(`${base}/x-nmos/query/v1.3/`, 20000);
+
+  stopTimer('rds-init');
+  if (!rdsReady) {
+    setStepState('rds-init', 'error');
+    onLaunchError('RDS did not become ready in time.');
+    return;
+  }
+  setStepState('rds-init', 'done', (Date.now() - t2) / 1000);
+
+  if (unsubRdsProgress) { unsubRdsProgress(); unsubRdsProgress = null; }
+  await continueLocalChecks(config, steps);
 }
 
 async function continueLocalChecks(config, steps) {
