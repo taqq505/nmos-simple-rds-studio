@@ -6,6 +6,10 @@ on:
 permissions:
   contents: write
 
+env:
+  GITHUB_WORKSPACE: ${{ github.workspace }}
+  RUNNER_WORKSPACE: ${{ runner.workspace }}
+
 jobs:
   build-windows:
     name: Build Windows x64
@@ -25,43 +29,54 @@ jobs:
           submodules: recursive
           path: _nmos-cpp-src
 
-      - name: Setup CMake 3.28
-        uses: lukka/get-cmake@v3.28.3
-
-      - name: Setup MSVC developer command prompt
-        uses: ilammy/msvc-dev-cmd@v1
-
-      - name: Set up Python
+      - name: Install Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.x'
+          python-version: '3.12'
+
+      - name: Install pip
+        run: python -m pip install --upgrade pip
 
       - name: Install Conan
-        run: pip install "conan>=2.0"
+        run: pip install conan~=2.20
+
+      - name: Install CMake 3.28
+        uses: lukka/get-cmake@v3.28.3
+
+      - name: Windows setup
+        run: |
+          echo "CMAKE_COMPILER_ARGS=-DCMAKE_C_COMPILER=cl.exe -DCMAKE_CXX_COMPILER=cl.exe" >> $env:GITHUB_ENV
+
+      - name: Install Bonjour
+        run: |
+          curl -L https://download.info.apple.com/Mac_OS_X/061-8098.20100603.gthyu/BonjourPSSetup.exe -o BonjourPSSetup.exe -q
+          & 7z.exe e BonjourPSSetup.exe Bonjour64.msi -y
+          msiexec /i ${{ github.workspace }}\Bonjour64.msi /qn /norestart
+
+      - name: Enable Conan
+        shell: bash
+        run: |
+          echo "CMAKE_EXTRA_ARGS=-DCMAKE_PROJECT_TOP_LEVEL_INCLUDES:STRING=\"third_party/cmake/conan_provider.cmake\" -DCONAN_INSTALL_ARGS:STRING=\"--build=missing\" -DNMOS_CPP_BUILD_LLDP=OFF -DNMOS_CPP_BUILD_TESTS=OFF" >> $GITHUB_ENV
 
       - name: Detect Conan profile
         run: conan profile detect --force
 
-      - name: Configure CMake
-        working-directory: _nmos-cpp-src/Development
-        shell: bash
-        run: |
-          cmake -B build -GNinja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES=third_party/cmake/conan_provider.cmake \
-            "-DCONAN_INSTALL_ARGS=--build=missing" \
-            -DNMOS_CPP_BUILD_LLDP=OFF \
-            -DNMOS_CPP_BUILD_TESTS=OFF
+      - name: Setup MSVC developer command prompt
+        uses: ilammy/msvc-dev-cmd@v1
 
-      - name: Build nmos-cpp-registry
-        working-directory: _nmos-cpp-src/Development
-        shell: bash
-        run: cmake --build build --config Release --target nmos-cpp-registry
+      - name: Build nmos-cpp
+        uses: lukka/run-cmake@v3.4
+        with:
+          cmakeListsOrSettingsJson: CMakeListsTxtAdvanced
+          cmakeListsTxtPath: '${{ github.workspace }}/_nmos-cpp-src/Development/CMakeLists.txt'
+          buildDirectory: '${{ runner.workspace }}/nmos-cpp-build'
+          cmakeAppendedArgs: '-GNinja -DCMAKE_BUILD_TYPE=Release ${{ env.CMAKE_COMPILER_ARGS }} ${{ env.CMAKE_EXTRA_ARGS }}'
+          buildWithCMakeArgs: '--target nmos-cpp-registry'
 
       - name: Copy binary to bin/
         shell: bash
         run: |
-          exe=$(find _nmos-cpp-src/Development/build -name "nmos-cpp-registry.exe" | head -1)
+          exe=$(find "${{ runner.workspace }}/nmos-cpp-build" -name "nmos-cpp-registry.exe" | head -1)
           cp "$exe" bin/win/x64/nmos-cpp-registry.exe
           echo "Copied: $exe"
 
