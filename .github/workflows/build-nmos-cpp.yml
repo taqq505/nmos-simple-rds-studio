@@ -38,21 +38,11 @@ jobs:
 
       - name: Install dependencies via Conan
         working-directory: _nmos-cpp-src/Development
-        run: |
-          conan install . `
-            --build=missing `
-            -s build_type=Release `
-            -s compiler.cppstd=17 `
-            --output-folder=build
+        run: conan install . --build=missing -s build_type=Release -s compiler.cppstd=17 --output-folder=build
 
       - name: Configure CMake
         working-directory: _nmos-cpp-src/Development
-        run: |
-          cmake -B build `
-            -DCMAKE_BUILD_TYPE=Release `
-            -DCMAKE_TOOLCHAIN_FILE=build/conan_toolchain.cmake `
-            -DNMOS_CPP_BUILD_LLDP=OFF `
-            -DNMOS_CPP_BUILD_TESTS=OFF
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=build/conan_toolchain.cmake -DNMOS_CPP_BUILD_LLDP=OFF -DNMOS_CPP_BUILD_TESTS=OFF
 
       - name: Build nmos-cpp-registry
         working-directory: _nmos-cpp-src/Development
