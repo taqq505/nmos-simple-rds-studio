@@ -25,33 +25,42 @@ jobs:
           submodules: recursive
           path: _nmos-cpp-src
 
-      - name: Setup vcpkg
-        uses: lukka/run-vcpkg@v11
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          vcpkgDirectory: ${{ github.workspace }}/vcpkg
-          vcpkgGitCommitId: 'a42af01b72c28a8e1d7b48107b33e4f286a55ef6'
+          python-version: '3.x'
 
-      - name: Show nmos-cpp directory structure
+      - name: Install Conan
+        run: pip install "conan>=2.0"
+
+      - name: Detect Conan profile
+        run: conan profile detect --force
+
+      - name: Install dependencies via Conan
+        working-directory: _nmos-cpp-src/Development
         run: |
-          Get-ChildItem -Path _nmos-cpp-src -Depth 2 | Select-Object FullName
+          conan install . `
+            --build=missing `
+            -s build_type=Release `
+            -s compiler.cppstd=17 `
+            --output-folder=build
 
       - name: Configure CMake
-        working-directory: _nmos-cpp-src
+        working-directory: _nmos-cpp-src/Development
         run: |
           cmake -B build `
             -DCMAKE_BUILD_TYPE=Release `
-            -DCMAKE_TOOLCHAIN_FILE="${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake" `
-            -DVCPKG_TARGET_TRIPLET=x64-windows `
+            -DCMAKE_TOOLCHAIN_FILE=build/conan_toolchain.cmake `
             -DNMOS_CPP_BUILD_LLDP=OFF `
             -DNMOS_CPP_BUILD_TESTS=OFF
 
       - name: Build nmos-cpp-registry
-        working-directory: _nmos-cpp-src
+        working-directory: _nmos-cpp-src/Development
         run: cmake --build build --config Release --target nmos-cpp-registry
 
       - name: Copy binary to bin/
         run: |
-          $exe = Get-ChildItem -Path _nmos-cpp-src/build -Recurse -Filter "nmos-cpp-registry.exe" | Select-Object -First 1
+          $exe = Get-ChildItem -Path _nmos-cpp-src/Development/build -Recurse -Filter "nmos-cpp-registry.exe" | Select-Object -First 1
           Copy-Item $exe.FullName -Destination bin/win/x64/nmos-cpp-registry.exe -Force
           echo "Copied: $($exe.FullName)"
 
