@@ -1,0 +1,65 @@
+name: Build nmos-cpp Registry
+
+on:
+  workflow_dispatch:
+    inputs:
+      nmos_cpp_ref:
+        description: 'nmos-cpp branch / tag (e.g. main, v1.0-dev)'
+        required: false
+        default: 'main'
+
+jobs:
+  build-windows:
+    name: Build Windows x64
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout nmos-cpp
+        uses: actions/checkout@v4
+        with:
+          repository: sony/nmos-cpp
+          ref: ${{ github.event.inputs.nmos_cpp_ref }}
+          submodules: recursive
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install Conan
+        run: pip install "conan>=2.0"
+
+      - name: Detect Conan profile
+        run: conan profile detect --force
+
+      - name: Install dependencies via Conan
+        run: |
+          conan install . `
+            --build=missing `
+            -s build_type=Release `
+            -s compiler.cppstd=17 `
+            --output-folder=build
+
+      - name: Configure CMake
+        run: |
+          cmake -B build `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_TOOLCHAIN_FILE=build/conan_toolchain.cmake `
+            -DNMOS_CPP_BUILD_LLDP=OFF `
+            -DNMOS_CPP_BUILD_TESTS=OFF
+
+      - name: Build nmos-cpp-registry
+        run: cmake --build build --config Release --target nmos-cpp-registry
+
+      - name: Locate binary
+        id: locate
+        run: |
+          $exe = Get-ChildItem -Path build -Recurse -Filter "nmos-cpp-registry.exe" | Select-Object -First 1
+          echo "EXE_PATH=$($exe.FullName)" >> $env:GITHUB_OUTPUT
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nmos-cpp-registry-win-x64
+          path: ${{ steps.locate.outputs.EXE_PATH }}
+          if-no-files-found: error
