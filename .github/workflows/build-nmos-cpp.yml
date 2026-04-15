@@ -25,8 +25,8 @@ jobs:
           submodules: recursive
           path: _nmos-cpp-src
 
-      - name: Setup CMake
-        uses: lukka/get-cmake@latest
+      - name: Setup CMake 3.28
+        uses: lukka/get-cmake@v3.28.3
 
       - name: Setup MSVC developer command prompt
         uses: ilammy/msvc-dev-cmd@v1
@@ -44,17 +44,26 @@ jobs:
 
       - name: Configure CMake
         working-directory: _nmos-cpp-src/Development
-        run: cmake -B build -GNinja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES=third_party/cmake/conan_provider.cmake -DCONAN_INSTALL_ARGS="--build=missing" -DNMOS_CPP_BUILD_LLDP=OFF -DNMOS_CPP_BUILD_TESTS=OFF
+        shell: bash
+        run: |
+          cmake -B build -GNinja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES=third_party/cmake/conan_provider.cmake \
+            "-DCONAN_INSTALL_ARGS=--build=missing" \
+            -DNMOS_CPP_BUILD_LLDP=OFF \
+            -DNMOS_CPP_BUILD_TESTS=OFF
 
       - name: Build nmos-cpp-registry
         working-directory: _nmos-cpp-src/Development
+        shell: bash
         run: cmake --build build --config Release --target nmos-cpp-registry
 
       - name: Copy binary to bin/
+        shell: bash
         run: |
-          $exe = Get-ChildItem -Path _nmos-cpp-src/Development/build -Recurse -Filter "nmos-cpp-registry.exe" | Select-Object -First 1
-          Copy-Item $exe.FullName -Destination bin/win/x64/nmos-cpp-registry.exe -Force
-          echo "Copied: $($exe.FullName)"
+          exe=$(find _nmos-cpp-src/Development/build -name "nmos-cpp-registry.exe" | head -1)
+          cp "$exe" bin/win/x64/nmos-cpp-registry.exe
+          echo "Copied: $exe"
 
       - name: Commit and push
         run: |
