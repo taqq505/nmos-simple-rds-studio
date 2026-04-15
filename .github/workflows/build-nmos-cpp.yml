@@ -31,6 +31,10 @@ jobs:
           vcpkgDirectory: ${{ github.workspace }}/vcpkg
           vcpkgGitCommitId: 'a42af01b72c28a8e1d7b48107b33e4f286a55ef6'
 
+      - name: Show nmos-cpp directory structure
+        run: |
+          Get-ChildItem -Path _nmos-cpp-src -Depth 2 | Select-Object FullName
+
       - name: Configure CMake
         working-directory: _nmos-cpp-src
         run: |
