@@ -3,17 +3,26 @@ name: Build nmos-cpp Registry
 on:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build-windows:
     name: Build Windows x64
     runs-on: windows-latest
 
     steps:
+      - name: Checkout nmos-simple-rds-studio
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Checkout nmos-cpp
         uses: actions/checkout@v4
         with:
           repository: sony/nmos-cpp
           submodules: recursive
+          path: _nmos-cpp-src
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -27,6 +36,7 @@ jobs:
         run: conan profile detect --force
 
       - name: Install dependencies via Conan
+        working-directory: _nmos-cpp-src
         run: |
           conan install . `
             --build=missing `
@@ -35,6 +45,7 @@ jobs:
             --output-folder=build
 
       - name: Configure CMake
+        working-directory: _nmos-cpp-src
         run: |
           cmake -B build `
             -DCMAKE_BUILD_TYPE=Release `
@@ -43,17 +54,19 @@ jobs:
             -DNMOS_CPP_BUILD_TESTS=OFF
 
       - name: Build nmos-cpp-registry
+        working-directory: _nmos-cpp-src
         run: cmake --build build --config Release --target nmos-cpp-registry
 
-      - name: Locate binary
-        id: locate
+      - name: Copy binary to bin/
         run: |
-          $exe = Get-ChildItem -Path build -Recurse -Filter "nmos-cpp-registry.exe" | Select-Object -First 1
-          echo "EXE_PATH=$($exe.FullName)" >> $env:GITHUB_OUTPUT
+          $exe = Get-ChildItem -Path _nmos-cpp-src/build -Recurse -Filter "nmos-cpp-registry.exe" | Select-Object -First 1
+          Copy-Item $exe.FullName -Destination bin/win/x64/nmos-cpp-registry.exe -Force
+          echo "Copied: $($exe.FullName)"
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: nmos-cpp-registry-win-x64
-          path: ${{ steps.locate.outputs.EXE_PATH }}
-          if-no-files-found: error
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add bin/win/x64/nmos-cpp-registry.exe
+          git commit -m "ci: add nmos-cpp-registry.exe for Windows x64 [skip ci]"
+          git push
