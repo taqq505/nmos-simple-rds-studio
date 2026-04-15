@@ -2,11 +2,6 @@ name: Build nmos-cpp Registry
 
 on:
   workflow_dispatch:
-    inputs:
-      nmos_cpp_ref:
-        description: 'nmos-cpp branch / tag (e.g. main, v1.0-dev)'
-        required: false
-        default: 'main'
 
 jobs:
   build-windows:
@@ -18,7 +13,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: sony/nmos-cpp
-          ref: ${{ github.event.inputs.nmos_cpp_ref }}
           submodules: recursive
 
       - name: Set up Python
