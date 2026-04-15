@@ -6,10 +6,6 @@ on:
 permissions:
   contents: write
 
-env:
-  GITHUB_WORKSPACE: ${{ github.workspace }}
-  RUNNER_WORKSPACE: ${{ runner.workspace }}
-
 jobs:
   build-windows:
     name: Build Windows x64
