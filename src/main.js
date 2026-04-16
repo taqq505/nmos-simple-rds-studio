@@ -1,7 +1,9 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const http = require('http');
+const https = require('https');
 const { spawn } = require('child_process');
 
 // ─── Config ───────────────────────────────────────────────────────────────────
@@ -83,6 +85,49 @@ async function confirmQuit(win) {
   }
 }
 
+// ─── RDS Log File Tail ────────────────────────────────────────────────────────
+
+const rdsLogBuffer = [];
+const MAX_LOG_LINES = 2000;
+let logFileTailer  = null;
+let errorLogPath   = null;
+
+function getErrorLogPath() {
+  return path.join(app.getPath('userData'), 'rds_error.log');
+}
+
+function startLogFileTail() {
+  if (logFileTailer) { clearInterval(logFileTailer); logFileTailer = null; }
+  let fileOffset = 0;
+
+  // ファイルが作られるまで少し待ってから開始
+  logFileTailer = setInterval(() => {
+    try {
+      const stat = fs.statSync(errorLogPath);
+      if (stat.size <= fileOffset) return;
+      const fd  = fs.openSync(errorLogPath, 'r');
+      const buf = Buffer.alloc(stat.size - fileOffset);
+      fs.readSync(fd, buf, 0, buf.length, fileOffset);
+      fs.closeSync(fd);
+      fileOffset = stat.size;
+
+      const lines = buf.toString('utf-8').split(/\r?\n/).filter(l => l.trim());
+      for (const line of lines) {
+        const entry = { text: line };
+        rdsLogBuffer.push(entry);
+        if (rdsLogBuffer.length > MAX_LOG_LINES) rdsLogBuffer.shift();
+        if (dashboardWindow) {
+          dashboardWindow.webContents.send('log:line', entry);
+        }
+      }
+    } catch { /* ファイル未作成は無視 */ }
+  }, 500);
+}
+
+function stopLogFileTail() {
+  if (logFileTailer) { clearInterval(logFileTailer); logFileTailer = null; }
+}
+
 // ─── Windows ──────────────────────────────────────────────────────────────────
 
 let splashWindow = null;
@@ -101,6 +146,7 @@ function createSplashWindow() {
     resizable: false,
     maximizable: false,
     fullscreenable: false,
+    center: true,
     title: 'NMOS Simple RDS Studio',
     icon: ICON_PATH,
     webPreferences: {
@@ -168,23 +214,27 @@ function startRds(config, onProgress) {
     return;
   }
 
+  // 新しい起動のたびにバッファとログファイルをリセット
+  rdsLogBuffer.length = 0;
+  errorLogPath = getErrorLogPath();
+  try { fs.unlinkSync(errorLogPath); } catch { /* 存在しなければ無視 */ }
+
   const args = buildRdsArgs(config);
   console.log('[RDS] binary:', binaryPath);
   console.log('[RDS] args:', args);
   rdsProcess = spawn(binaryPath, args, { stdio: ['ignore', 'pipe', 'pipe'] });
   console.log('[RDS] spawned pid:', rdsProcess.pid);
 
+  // stdout/stderr はスプラッシュ画面の起動確認にのみ使用
   rdsProcess.stdout.on('data', (data) => {
-    const text = data.toString();
-    console.log('[RDS stdout]', text);
-    onProgress({ type: 'stdout', message: text });
+    onProgress({ type: 'stdout', message: data.toString() });
+  });
+  rdsProcess.stderr.on('data', (data) => {
+    onProgress({ type: 'stderr', message: data.toString() });
   });
 
-  rdsProcess.stderr.on('data', (data) => {
-    const text = data.toString();
-    console.log('[RDS stderr]', text);
-    onProgress({ type: 'stderr', message: text });
-  });
+  // ダッシュボード用ログはファイルtailで取得
+  startLogFileTail();
 
   rdsProcess.on('error', (err) => {
     console.log('[RDS error]', err.message);
@@ -199,6 +249,7 @@ function startRds(config, onProgress) {
 }
 
 function stopRds() {
+  stopLogFileTail();
   if (rdsProcess) {
     rdsProcess.kill();
     rdsProcess = null;
@@ -217,8 +268,9 @@ function buildRdsArgs(config) {
     logging_level: config.logging_level,
   };
 
-  if (config.error_log) settings.error_log = config.error_log;
-  if (config.access_log) settings.access_log = config.access_log;
+  // ログファイルは必ず userData 以下の絶対パスに書き込む
+  settings.error_log  = getErrorLogPath();
+  settings.access_log = path.join(app.getPath('userData'), 'rds_access.log');
 
   const tmpSettingsPath = path.join(app.getPath('temp'), 'nmos-rds-settings.json');
   fs.writeFileSync(tmpSettingsPath, JSON.stringify(settings, null, 2));
@@ -275,10 +327,67 @@ ipcMain.handle('app:openDashboard', () => {
 });
 
 ipcMain.handle('app:getVersion', () => app.getVersion());
+ipcMain.handle('app:openExternal', (_e, url) => shell.openExternal(url));
+ipcMain.handle('log:getBuffer', () => [...rdsLogBuffer]);
+
+/**
+ * Proxy HTTP request via Node.js to bypass renderer CORS restrictions.
+ * @param {string} url
+ * @param {object} [opts] - { method, headers, body, readBody }
+ * @returns {{ ok: boolean, status: number, text: string }}
+ */
+ipcMain.handle('app:fetch', (_e, url, opts = {}) => {
+  return new Promise((resolve) => {
+    const lib = url.startsWith('https') ? https : http;
+    const { method = 'GET', headers = {}, body = null, readBody = false } = opts;
+
+    const bodyBuf = body ? Buffer.from(body, 'utf-8') : null;
+    const reqHeaders = { ...headers };
+    if (bodyBuf) {
+      reqHeaders['Content-Length'] = bodyBuf.length;
+    }
+
+    const parsedUrl = new URL(url);
+    const reqOpts = {
+      hostname: parsedUrl.hostname,
+      port: parsedUrl.port || (url.startsWith('https') ? 443 : 80),
+      path: parsedUrl.pathname + parsedUrl.search,
+      method,
+      headers: reqHeaders,
+      timeout: 4000,
+      rejectUnauthorized: false,
+    };
+
+    const req = lib.request(reqOpts, (res) => {
+      const chunks = [];
+      res.on('data', (chunk) => chunks.push(chunk));
+      res.on('end', () => {
+        const text = readBody ? Buffer.concat(chunks).toString('utf-8') : '';
+        resolve({ ok: res.statusCode >= 200 && res.statusCode < 400, status: res.statusCode, text });
+      });
+    });
+
+    req.on('error', () => resolve({ ok: false, status: 0, text: '' }));
+    req.on('timeout', () => { req.destroy(); resolve({ ok: false, status: 0, text: '' }); });
+
+    if (bodyBuf) req.write(bodyBuf);
+    req.end();
+  });
+});
+
+ipcMain.handle('app:restart', () => {
+  stopRds();
+  createSplashWindow();
+  if (dashboardWindow) {
+    dashboardWindow.destroy();
+  }
+  return true;
+});
 
 // ─── App lifecycle ────────────────────────────────────────────────────────────
 
 app.whenReady().then(() => {
+  Menu.setApplicationMenu(null);
   createSplashWindow();
 
   app.on('activate', () => {

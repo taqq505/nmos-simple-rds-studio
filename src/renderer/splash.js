@@ -182,7 +182,7 @@ async function showStep2a() {
     .join('');
 
   document.getElementById('content').innerHTML = `
-    <div style="display:flex; align-items:center; gap:10px; margin-bottom:16px;">
+    <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
       <button class="btn-back" id="btn-back">
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
           <path d="M9 11L5 7l4-4" stroke="#888" stroke-width="1.5" stroke-linecap="round"/>
@@ -190,7 +190,7 @@ async function showStep2a() {
       </button>
       <div>
         <div style="font-size:15px; font-weight:500; color:#111;">Launch new RDS</div>
-        <div style="font-size:11px; color:#888; margin-top:2px;">Configure registry settings</div>
+        <div style="font-size:11px; color:#888; margin-top:1px;">Configure registry settings</div>
       </div>
     </div>
 
@@ -243,16 +243,12 @@ async function showStep2a() {
       Priority below 100 may conflict with existing registries.
     </div>
 
-    <div style="background:#f9f9f9; border-radius:8px; padding:10px 12px; margin-bottom:12px; font-family:monospace; font-size:11px;">
-      <div style="display:flex; justify-content:space-between; margin-bottom:3px;">
-        <span style="color:#bbb;">host_address</span>
-        <span style="color:#111; font-weight:500;" id="prev-host">${cfg.host_address || '0.0.0.0'}</span>
-      </div>
-      <div style="display:flex; justify-content:space-between; margin-bottom:3px;">
+    <div style="background:#f9f9f9; border-radius:8px; padding:6px 10px; margin-bottom:8px; font-family:monospace; font-size:10px;">
+      <div style="display:flex; justify-content:space-between; margin-bottom:2px;">
         <span style="color:#bbb;">registration</span>
         <span style="color:#111; font-weight:500;" id="prev-reg">${cfg.host_address || '0.0.0.0'}:${regPort}</span>
       </div>
-      <div style="display:flex; justify-content:space-between; margin-bottom:3px;">
+      <div style="display:flex; justify-content:space-between; margin-bottom:2px;">
         <span style="color:#bbb;">query</span>
         <span style="color:#111; font-weight:500;" id="prev-qry">${cfg.host_address || '0.0.0.0'}:${qryPort}</span>
       </div>
@@ -282,7 +278,6 @@ function updatePreview2a() {
   const dm  = document.getElementById('inp-domain').value || 'local.';
   const pri = parseInt(document.getElementById('inp-priority').value) || 100;
 
-  document.getElementById('prev-host').textContent = nic;
   document.getElementById('prev-reg').textContent  = `${nic}:${rp}`;
   document.getElementById('prev-qry').textContent  = `${nic}:${qp}`;
   document.getElementById('prev-pri').textContent  = pri;
@@ -342,8 +337,8 @@ function showStep2b() {
       <div style="flex:1; height:0.5px; background:#eee;"></div>
     </div>
 
-    <div style="display:flex; gap:8px; margin-bottom:8px;">
-      <div class="form-group" style="width:80px; flex-shrink:0;">
+    <div style="display:flex; gap:8px; margin-bottom:6px;">
+      <div class="form-group" style="width:72px; flex-shrink:0;">
         <div class="form-label">Protocol</div>
         <select class="form-select" id="sel-proto">
           <option value="http">http</option>
@@ -354,13 +349,26 @@ function showStep2b() {
         <div class="form-label">IP address</div>
         <input class="form-input" type="text" id="inp-ip" placeholder="192.168.10.100" style="font-family:monospace;">
       </div>
-      <div class="form-group" style="width:80px; flex-shrink:0;">
-        <div class="form-label">Port</div>
-        <input class="form-input" type="text" id="inp-port" value="3210" style="font-family:monospace;">
+    </div>
+    <div style="display:flex; gap:8px; margin-bottom:8px;">
+      <div class="form-group" style="flex:1;">
+        <div class="form-label">Registration port <span class="form-hint">Default: 3210</span></div>
+        <input class="form-input" type="text" id="inp-reg-port" value="3210" style="font-family:monospace;">
+      </div>
+      <div class="form-group" style="flex:1;">
+        <div class="form-label">Query port <span class="form-hint">Default: 3211</span></div>
+        <input class="form-input" type="text" id="inp-port" value="3211" style="font-family:monospace;">
       </div>
     </div>
 
-    <div style="font-size:11px; color:#888; font-family:monospace; background:#f9f9f9; border-radius:8px; padding:6px 10px; margin-bottom:10px;" id="preview-url">http://192.168.10.100:3210</div>
+    <div style="font-size:10px; color:#888; font-family:monospace; background:#f9f9f9; border-radius:8px; padding:6px 10px; margin-bottom:8px; display:flex; flex-direction:column; gap:2px;">
+      <div style="display:flex; justify-content:space-between;">
+        <span style="color:#bbb;">registration</span><span id="preview-reg">http://192.168.10.100:3210</span>
+      </div>
+      <div style="display:flex; justify-content:space-between;">
+        <span style="color:#bbb;">query</span><span id="preview-url">http://192.168.10.100:3211</span>
+      </div>
+    </div>
 
     <div class="notice notice-amber" id="https-note" style="display:none;">
       <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style="flex-shrink:0">
@@ -380,7 +388,7 @@ function showStep2b() {
   });
   document.getElementById('btn-connect').addEventListener('click', onConnect);
 
-  ['sel-proto', 'inp-ip', 'inp-port'].forEach(id => {
+  ['sel-proto', 'inp-ip', 'inp-reg-port', 'inp-port'].forEach(id => {
     document.getElementById(id).addEventListener('input', updatePreview2b);
     document.getElementById(id).addEventListener('change', updatePreview2b);
   });
@@ -409,26 +417,29 @@ function showStep2b() {
 }
 
 function updatePreview2b() {
-  const proto = document.getElementById('sel-proto').value;
-  const ip    = document.getElementById('inp-ip').value || '192.168.10.100';
-  const port  = document.getElementById('inp-port').value || '3210';
-  document.getElementById('preview-url').textContent = `${proto}://${ip}:${port}`;
+  const proto   = document.getElementById('sel-proto').value;
+  const ip      = document.getElementById('inp-ip').value || '192.168.10.100';
+  const regPort = document.getElementById('inp-reg-port').value || '3210';
+  const qryPort = document.getElementById('inp-port').value || '3211';
+  document.getElementById('preview-reg').textContent = `${proto}://${ip}:${regPort}`;
+  document.getElementById('preview-url').textContent = `${proto}://${ip}:${qryPort}`;
   document.getElementById('https-note').style.display = proto === 'https' ? 'flex' : 'none';
 }
 
 function onConnect() {
   if (unsubMdns) { unsubMdns(); unsubMdns = null; }
-  const proto = document.getElementById('sel-proto').value;
-  const ip    = document.getElementById('inp-ip').value;
-  const port  = document.getElementById('inp-port').value || '3210';
-  const url   = `${proto}://${ip}:${port}`;
+  const proto   = document.getElementById('sel-proto').value;
+  const ip      = document.getElementById('inp-ip').value;
+  const regPort = parseInt(document.getElementById('inp-reg-port').value) || 3210;
+  const qryPort = parseInt(document.getElementById('inp-port').value) || 3211;
 
   const config = {
     mode: 'remote',
-    remote_url: url,
+    remote_url: `${proto}://${ip}:${qryPort}`,
+    remote_reg_url: `${proto}://${ip}:${regPort}`,
     host_address: ip,
-    registration_port: parseInt(port),
-    query_port: parseInt(port) + 1,
+    registration_port: regPort,
+    query_port: qryPort,
     domain: 'local.',
     priority: 100,
     logging_level: 0,
@@ -449,9 +460,8 @@ const LOCAL_STEPS = [
 ];
 
 const REMOTE_STEPS = [
-  { id: 'host-reachable',   label: 'Host reachable' },
-  { id: 'registration-api', label: 'Registration API check' },
-  { id: 'query-api',        label: 'Query API check' },
+  { id: 'host-reachable', label: 'Host reachable' },
+  { id: 'query-api',      label: 'Query API check' },
 ];
 
 function showStep3({ mode, config }) {
@@ -676,44 +686,31 @@ async function continueLocalChecks(config, steps) {
 
 async function runRemoteConnect(steps, config) {
   const baseUrl = config.remote_url;
-  const regUrl  = `${baseUrl}/x-nmos/registration/v1.3/`;
   const qryUrl  = `${baseUrl}/x-nmos/query/v1.3/`;
 
-  // Step 1: Host reachable
+  // Step 1: Host reachable — check Query API root responds
   setStepState('host-reachable', 'active');
   let t1 = startTimer('host-reachable');
-  const reachable = await pollEndpoint(baseUrl, 5000);
+  const reachable = await pollEndpoint(qryUrl, 8000);
   stopTimer('host-reachable');
   if (!reachable) {
     setStepState('host-reachable', 'error');
-    onLaunchError('Host is not reachable.');
+    onLaunchError('Host is not reachable. Check IP and query port.');
     return;
   }
   setStepState('host-reachable', 'done', (Date.now() - t1) / 1000);
 
-  // Step 2: Registration API
-  setStepState('registration-api', 'active');
-  let t2 = startTimer('registration-api');
-  const regOk = await pollEndpoint(regUrl, 5000);
-  stopTimer('registration-api');
-  if (!regOk) {
-    setStepState('registration-api', 'error');
-    onLaunchError('Registration API did not respond. Timeout: 5s.');
-    return;
-  }
-  setStepState('registration-api', 'done', (Date.now() - t2) / 1000);
-
-  // Step 3: Query API
+  // Step 2: Query API — verify nodes endpoint returns valid JSON
   setStepState('query-api', 'active');
-  let t3 = startTimer('query-api');
-  const qryOk = await pollEndpoint(qryUrl, 5000);
+  let t2 = startTimer('query-api');
+  const qryOk = await pollEndpoint(`${qryUrl}nodes`, 5000);
   stopTimer('query-api');
   if (!qryOk) {
     setStepState('query-api', 'error');
-    onLaunchError('Query API did not respond.');
+    onLaunchError('Query API /nodes did not respond.');
     return;
   }
-  setStepState('query-api', 'done', (Date.now() - t3) / 1000);
+  setStepState('query-api', 'done', (Date.now() - t2) / 1000);
 
   await window.api.saveConfig(config);
   onLaunchSuccess();
@@ -729,8 +726,8 @@ async function pollEndpoint(url, timeout) {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
     try {
-      const res = await fetch(url, { signal: AbortSignal.timeout(2000) });
-      if (res.ok || res.status === 200) return true;
+      const res = await window.api.fetch(url);
+      if (res.ok) return true;
     } catch (_) {}
     await sleep(500);
   }

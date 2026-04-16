@@ -26,11 +26,25 @@ contextBridge.exposeInMainWorld('api', {
   /** Stop nmos-cpp-registry process */
   stopRds: () => ipcRenderer.invoke('rds:stop'),
 
+  /** Stop RDS and return to splash screen */
+  restart: () => ipcRenderer.invoke('app:restart'),
+
   /** Notify main process that RDS checks passed — triggers dashboard open */
   rdsReady: () => ipcRenderer.invoke('rds:ready'),
 
   /** Navigate to dashboard (remote mode) */
   openDashboard: () => ipcRenderer.invoke('app:openDashboard'),
+
+  /** Open URL in the system default browser */
+  openExternal: (url) => ipcRenderer.invoke('app:openExternal', url),
+
+  /**
+   * HTTP request via main process (bypasses renderer CORS restrictions).
+   * @param {string} url
+   * @param {{ method?: string, headers?: object, body?: string, readBody?: boolean }} [opts]
+   * @returns {Promise<{ok: boolean, status: number, text: string}>}
+   */
+  fetch: (url, opts) => ipcRenderer.invoke('app:fetch', url, opts),
 
   // ─── Events from main process ────────────────────────────────────────────────
   /**
@@ -53,5 +67,20 @@ contextBridge.exposeInMainWorld('api', {
     const handler = (_event, data) => callback(data);
     ipcRenderer.on('mdns:discovered', handler);
     return () => ipcRenderer.removeListener('mdns:discovered', handler);
+  },
+
+  // ─── Local RDS log stream ────────────────────────────────────────────────────
+  /** Get current buffered log lines from RDS process stdout/stderr */
+  getLogBuffer: () => ipcRenderer.invoke('log:getBuffer'),
+
+  /**
+   * Subscribe to live log lines from the RDS process.
+   * @param {function({ts: number, source: string, text: string}): void} callback
+   * @returns {function} Unsubscribe function
+   */
+  onLogLine: (callback) => {
+    const handler = (_event, data) => callback(data);
+    ipcRenderer.on('log:line', handler);
+    return () => ipcRenderer.removeListener('log:line', handler);
   },
 });
