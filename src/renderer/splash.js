@@ -337,37 +337,26 @@ function showStep2b() {
       <div style="flex:1; height:0.5px; background:#eee;"></div>
     </div>
 
-    <div style="display:flex; gap:8px; margin-bottom:6px;">
-      <div class="form-group" style="width:72px; flex-shrink:0;">
+    <div style="display:flex; gap:8px; align-items:flex-end; margin-bottom:8px;">
+      <div class="form-group" style="width:80px; flex-shrink:0; margin-bottom:0;">
         <div class="form-label">Protocol</div>
         <select class="form-select" id="sel-proto">
           <option value="http">http</option>
           <option value="https">https</option>
         </select>
       </div>
-      <div class="form-group" style="flex:1;">
+      <div class="form-group" style="flex:1; margin-bottom:0;">
         <div class="form-label">IP address</div>
         <input class="form-input" type="text" id="inp-ip" placeholder="192.168.10.100" style="font-family:monospace;">
       </div>
-    </div>
-    <div style="display:flex; gap:8px; margin-bottom:8px;">
-      <div class="form-group" style="flex:1;">
-        <div class="form-label">Registration port <span class="form-hint">Default: 3210</span></div>
-        <input class="form-input" type="text" id="inp-reg-port" value="3210" style="font-family:monospace;">
-      </div>
-      <div class="form-group" style="flex:1;">
-        <div class="form-label">Query port <span class="form-hint">Default: 3211</span></div>
+      <div class="form-group" style="width:80px; flex-shrink:0; margin-bottom:0;">
+        <div class="form-label">Port <span class="form-hint">3211</span></div>
         <input class="form-input" type="text" id="inp-port" value="3211" style="font-family:monospace;">
       </div>
     </div>
 
-    <div style="font-size:10px; color:#888; font-family:monospace; background:#f9f9f9; border-radius:8px; padding:6px 10px; margin-bottom:8px; display:flex; flex-direction:column; gap:2px;">
-      <div style="display:flex; justify-content:space-between;">
-        <span style="color:#bbb;">registration</span><span id="preview-reg">http://192.168.10.100:3210</span>
-      </div>
-      <div style="display:flex; justify-content:space-between;">
-        <span style="color:#bbb;">query</span><span id="preview-url">http://192.168.10.100:3211</span>
-      </div>
+    <div style="font-size:10px; color:#888; font-family:monospace; background:#f9f9f9; border-radius:8px; padding:6px 10px; margin-bottom:8px; display:flex; justify-content:space-between;">
+      <span style="color:#bbb;">query</span><span id="preview-url">http://192.168.10.100:3211</span>
     </div>
 
     <div class="notice notice-amber" id="https-note" style="display:none;">
@@ -388,7 +377,7 @@ function showStep2b() {
   });
   document.getElementById('btn-connect').addEventListener('click', onConnect);
 
-  ['sel-proto', 'inp-ip', 'inp-reg-port', 'inp-port'].forEach(id => {
+  ['sel-proto', 'inp-ip', 'inp-port'].forEach(id => {
     document.getElementById(id).addEventListener('input', updatePreview2b);
     document.getElementById(id).addEventListener('change', updatePreview2b);
   });
@@ -419,9 +408,7 @@ function showStep2b() {
 function updatePreview2b() {
   const proto   = document.getElementById('sel-proto').value;
   const ip      = document.getElementById('inp-ip').value || '192.168.10.100';
-  const regPort = document.getElementById('inp-reg-port').value || '3210';
   const qryPort = document.getElementById('inp-port').value || '3211';
-  document.getElementById('preview-reg').textContent = `${proto}://${ip}:${regPort}`;
   document.getElementById('preview-url').textContent = `${proto}://${ip}:${qryPort}`;
   document.getElementById('https-note').style.display = proto === 'https' ? 'flex' : 'none';
 }
@@ -430,15 +417,14 @@ function onConnect() {
   if (unsubMdns) { unsubMdns(); unsubMdns = null; }
   const proto   = document.getElementById('sel-proto').value;
   const ip      = document.getElementById('inp-ip').value;
-  const regPort = parseInt(document.getElementById('inp-reg-port').value) || 3210;
   const qryPort = parseInt(document.getElementById('inp-port').value) || 3211;
 
   const config = {
     mode: 'remote',
     remote_url: `${proto}://${ip}:${qryPort}`,
-    remote_reg_url: `${proto}://${ip}:${regPort}`,
+    remote_reg_url: `${proto}://${ip}:${qryPort}`,
     host_address: ip,
-    registration_port: regPort,
+    registration_port: qryPort,
     query_port: qryPort,
     domain: 'local.',
     priority: 100,
