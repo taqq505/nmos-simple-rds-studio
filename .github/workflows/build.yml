@@ -35,9 +35,34 @@ jobs:
           name: nmos-simple-rds-studio-win-x64
           path: dist/*.exe
 
+  build-windows-arm64:
+    name: Build Windows (ARM64)
+    runs-on: windows-11-arm
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build portable .exe
+        run: npm run build:win -- --arm64
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nmos-simple-rds-studio-win-arm64
+          path: dist/*.exe
+
   release:
     name: Create GitHub Release
-    needs: [build-windows]
+    needs: [build-windows, build-windows-arm64]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     steps:

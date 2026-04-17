@@ -1,0 +1,71 @@
+name: Build nmos-cpp Registry (macOS x64)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-macos-x64:
+    name: Build macOS x64
+    runs-on: macos-13
+
+    steps:
+      - name: Checkout nmos-simple-rds-studio
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Checkout nmos-cpp
+        uses: actions/checkout@v4
+        with:
+          repository: sony/nmos-cpp
+          ref: master
+          submodules: recursive
+          path: _nmos-cpp-src
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install pip
+        run: python -m pip install --upgrade pip
+
+      - name: Install Conan
+        run: pip install conan~=2.20
+
+      - name: Install CMake 3.28
+        uses: lukka/get-cmake@v3.28.3
+
+      - name: Enable Conan
+        run: |
+          echo "CMAKE_EXTRA_ARGS=-DCMAKE_PROJECT_TOP_LEVEL_INCLUDES:STRING=third_party/cmake/conan_provider.cmake -DCONAN_INSTALL_ARGS:STRING=--build=missing;--options;cpprestsdk/*:http_client_impl=asio;--options;cpprestsdk/*:http_listener_impl=asio -DNMOS_CPP_BUILD_LLDP=OFF -DNMOS_CPP_BUILD_TESTS=OFF" >> $GITHUB_ENV
+
+      - name: Detect Conan profile
+        run: conan profile detect --force
+
+      - name: Build nmos-cpp
+        uses: lukka/run-cmake@v3.4
+        with:
+          cmakeListsOrSettingsJson: CMakeListsTxtAdvanced
+          cmakeListsTxtPath: '${{ github.workspace }}/_nmos-cpp-src/Development/CMakeLists.txt'
+          buildDirectory: '${{ runner.workspace }}/nmos-cpp-build'
+          cmakeAppendedArgs: '-GNinja -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=x86_64 ${{ env.CMAKE_EXTRA_ARGS }}'
+          buildWithCMakeArgs: '--target nmos-cpp-registry'
+
+      - name: Copy binary to bin/
+        run: |
+          mkdir -p bin/mac/x64
+          exe=$(find "${{ runner.workspace }}/nmos-cpp-build" -name "nmos-cpp-registry" | head -1)
+          cp "$exe" bin/mac/x64/nmos-cpp-registry
+          echo "Copied: $exe"
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add bin/mac/x64/nmos-cpp-registry
+          git commit -m "ci: add nmos-cpp-registry for macOS x64 [skip ci]"
+          git push
