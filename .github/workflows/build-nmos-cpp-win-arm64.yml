@@ -8,8 +8,8 @@ permissions:
 
 jobs:
   build-windows-arm64:
-    name: Build Windows ARM64
-    runs-on: windows-11-arm
+    name: Build Windows ARM64 (cross-compile from x64)
+    runs-on: windows-2022
 
     steps:
       - name: Checkout nmos-simple-rds-studio
@@ -36,10 +36,8 @@ jobs:
       - name: Install Conan
         run: pip install conan~=2.20
 
-      - name: Install CMake and Ninja
-        run: |
-          choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System' -y
-          choco install ninja -y
+      - name: Install CMake 3.28
+        uses: lukka/get-cmake@v3.28.3
 
       - name: Install Bonjour (x64 SDK — ARM64 compatible headers)
         run: |
@@ -55,10 +53,10 @@ jobs:
       - name: Detect Conan profile
         run: conan profile detect --force
 
-      - name: Setup MSVC developer command prompt (ARM64)
+      - name: Setup MSVC developer command prompt (amd64 → arm64 cross-compile)
         uses: ilammy/msvc-dev-cmd@v1
         with:
-          arch: arm64
+          arch: amd64_arm64
 
       - name: Build nmos-cpp
         uses: lukka/run-cmake@v3.4
@@ -66,7 +64,7 @@ jobs:
           cmakeListsOrSettingsJson: CMakeListsTxtAdvanced
           cmakeListsTxtPath: '${{ github.workspace }}/_nmos-cpp-src/Development/CMakeLists.txt'
           buildDirectory: '${{ runner.workspace }}/nmos-cpp-build'
-          cmakeAppendedArgs: '-GNinja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=cl.exe -DCMAKE_CXX_COMPILER=cl.exe ${{ env.CMAKE_EXTRA_ARGS }}'
+          cmakeAppendedArgs: '-GNinja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=cl.exe -DCMAKE_CXX_COMPILER=cl.exe -DCMAKE_SYSTEM_NAME=Windows -DCMAKE_SYSTEM_PROCESSOR=ARM64 ${{ env.CMAKE_EXTRA_ARGS }}'
           buildWithCMakeArgs: '--target nmos-cpp-registry'
 
       - name: Copy binary to bin/
