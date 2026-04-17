@@ -36,8 +36,10 @@ jobs:
       - name: Install Conan
         run: pip install conan~=2.20
 
-      - name: Install CMake 3.28
-        uses: lukka/get-cmake@v3.28.3
+      - name: Install CMake and Ninja
+        run: |
+          choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System' -y
+          choco install ninja -y
 
       - name: Install Bonjour (x64 SDK — ARM64 compatible headers)
         run: |
