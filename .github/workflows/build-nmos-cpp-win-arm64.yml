@@ -45,13 +45,21 @@ jobs:
           & 7z.exe e BonjourPSSetup.exe Bonjour64.msi -y
           msiexec /i ${{ github.workspace }}\Bonjour64.msi /qn /norestart
 
-      - name: Enable Conan
-        shell: bash
-        run: |
-          echo "CMAKE_EXTRA_ARGS=-DCMAKE_PROJECT_TOP_LEVEL_INCLUDES:STRING=\"third_party/cmake/conan_provider.cmake\" -DCONAN_INSTALL_ARGS:STRING=\"--build=missing;--options;cpprestsdk/*:http_client_impl=asio;--options;cpprestsdk/*:http_listener_impl=asio\" -DNMOS_CPP_BUILD_LLDP=OFF -DNMOS_CPP_BUILD_TESTS=OFF" >> $GITHUB_ENV
-
       - name: Detect Conan profile
         run: conan profile detect --force
+
+      - name: Create ARM64 Conan host profile
+        shell: bash
+        run: |
+          cp ~/.conan2/profiles/default ~/.conan2/profiles/windows_arm64
+          sed -i 's/^arch=.*/arch=armv8/' ~/.conan2/profiles/windows_arm64
+          echo "--- windows_arm64 profile ---"
+          cat ~/.conan2/profiles/windows_arm64
+
+      - name: Enable Conan (ARM64 cross-compile)
+        shell: bash
+        run: |
+          echo "CMAKE_EXTRA_ARGS=-DCMAKE_PROJECT_TOP_LEVEL_INCLUDES:STRING=\"third_party/cmake/conan_provider.cmake\" -DCONAN_INSTALL_ARGS:STRING=\"--build=missing;--profile:build=default;--profile:host=windows_arm64;--options;cpprestsdk/*:http_client_impl=asio;--options;cpprestsdk/*:http_listener_impl=asio\" -DNMOS_CPP_BUILD_LLDP=OFF -DNMOS_CPP_BUILD_TESTS=OFF" >> $GITHUB_ENV
 
       - name: Setup MSVC developer command prompt (amd64 → arm64 cross-compile)
         uses: ilammy/msvc-dev-cmd@v1
