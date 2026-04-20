@@ -189,12 +189,6 @@
     .data-table tr:last-child td { border-bottom: none; }
     .data-table tr:hover td { background: var(--bg-secondary); }
 
-    /* ── Heartbeat Bar ── */
-    .hb-bar { display: flex; align-items: center; gap: 6px; }
-    .hb-track { width: 96px; height: 4px; background: var(--bg-tertiary); border-radius: 2px; flex-shrink: 0; }
-    .hb-fill { height: 4px; border-radius: 2px; transition: width 0.5s ease, background 0.5s ease; }
-    .hb-text { font-size: 11px; font-family: monospace; color: var(--text-tertiary); width: 28px; }
-
     /* ── Status Pill ── */
     .pill { display: inline-block; font-size: 10px; padding: 2px 8px; border-radius: 99px; font-weight: 500; }
     .pill-green  { background: var(--green-50);  color: var(--green-600); }
@@ -262,11 +256,6 @@
       padding: 4px 10px; margin-bottom: 10px; width: fit-content;
     }
 
-    /* ── Status Dot (node health) ── */
-    .status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-    .status-dot-ok      { background: #28C840; }
-    .status-dot-delayed { background: #FEBC2E; }
-    .status-dot-expired { background: #E24B4A; }
     .conn-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; margin-right: 4px; vertical-align: middle; }
 
     /* ── SDP Section ── */
@@ -338,6 +327,22 @@
     .btn-stop-rds { padding: 8px 20px; border-radius: 8px; border: 0.5px solid #F09595; background: transparent; color: var(--red-600); font-size: 13px; cursor: pointer; margin-left: auto; }
     .btn-stop-rds:hover { background: var(--red-50); }
     .inline-warn { font-size: 11px; color: var(--amber-600); margin-top: 3px; }
+
+
+    /* ── Connection Map ── */
+    .map-wrap { display:flex; align-items:flex-start; min-height:200px; }
+    .map-col { display:flex; flex-direction:column; gap:6px; padding:16px 12px; width:210px; flex-shrink:0; }
+    .map-mid { flex:1; position:relative; align-self:stretch; min-width:60px; }
+    .map-svg { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; overflow:visible; }
+    .map-col-header { font-size:10px; color:var(--text-tertiary); letter-spacing:0.05em; margin-bottom:4px; }
+    .map-card { border:0.5px solid var(--border-default); border-radius:8px; padding:7px 10px; background:var(--bg-primary); cursor:pointer; transition:border-color 0.15s, opacity 0.15s; max-width:100%; overflow:hidden; }
+    .map-card.connected { border-color:#B5D4F4; background:var(--blue-50); }
+    .map-card.dim { opacity:0.2; }
+    .map-card.focus-sender { border-color:var(--blue-600); background:var(--blue-50); box-shadow:0 0 0 2px #B5D4F4; }
+    .map-card.focus-receiver { border-color:var(--purple-600); background:var(--purple-50); box-shadow:0 0 0 2px #C8C5F8; }
+    .map-card.focus-related { border-color:var(--purple-600); background:var(--purple-50); }
+    .map-card-label { font-size:12px; font-weight:500; color:var(--text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .map-card-meta  { font-size:10px; color:var(--text-secondary); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 
     /* ── Common Buttons ── */
     .btn-sm { font-size: 11px; padding: 4px 10px; border-radius: 8px; border: 0.5px solid var(--border-medium); background: transparent; color: var(--text-secondary); cursor: pointer; }
@@ -413,6 +418,15 @@
       </svg>
       Log
     </div>
+    <div class="nav-item" data-page="map">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+        <circle cx="2.5" cy="7" r="1.5" stroke="currentColor" stroke-width="1.2"/>
+        <circle cx="11.5" cy="3" r="1.5" stroke="currentColor" stroke-width="1.2"/>
+        <circle cx="11.5" cy="11" r="1.5" stroke="currentColor" stroke-width="1.2"/>
+        <path d="M4 7h2.5M6.5 7 C8 7 8 3 10 3M6.5 7 C8 7 8 11 10 11" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" fill="none"/>
+      </svg>
+      Map
+    </div>
     <div class="nav-section-label">RESOURCES</div>
     <div class="nav-item" data-page="nodes">
       <span class="nav-dot" style="background:#185FA5;"></span>
@@ -431,16 +445,24 @@
       Flows / Sources
     </div>
     <div class="nav-section-label">SYSTEM</div>
-    <div class="nav-item" data-page="settings">
+    <div class="nav-item" data-page="rds-settings">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+        <rect x="1" y="2" width="12" height="10" rx="1.5" stroke="currentColor" stroke-width="1.2"/>
+        <path d="M1 5h12" stroke="currentColor" stroke-width="1.2"/>
+        <path d="M4 8.5h2M8 8.5h2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+      </svg>
+      RDS Settings
+    </div>
+    <div class="nav-item" data-page="app-settings">
       <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
         <circle cx="7" cy="7" r="2" stroke="currentColor" stroke-width="1.2"/>
         <path d="M7 1v2M7 11v2M1 7h2M11 7h2M2.93 2.93l1.41 1.41M9.66 9.66l1.41 1.41M2.93 11.07l1.41-1.41M9.66 4.34l1.41-1.41" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
       </svg>
-      Settings
+      App Settings
     </div>
   </nav>
 
-  <div class="main-area" id="main-area">
+<div class="main-area" id="main-area">
     <div style="display:flex;align-items:center;justify-content:center;flex:1;color:#bbb;font-size:13px;">
       Loading...
     </div>
@@ -452,6 +474,7 @@
   <span id="sb-mdns">—</span>
   <span id="sb-priority">—</span>
   <span class="sb-spacer"></span>
+  <span id="sb-last-updated" style="color:var(--text-secondary)">—</span>
   <span id="sb-uptime">Uptime: —</span>
 </footer>
 

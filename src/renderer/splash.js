@@ -542,6 +542,12 @@ function setStepState(stepId, state, time) {
     icon.style.background = '#A32D2D';
     icon.innerHTML = `<svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M3 3l4 4M7 3l-4 4" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/></svg>`;
     label.style.color = '#791F1F'; label.style.fontWeight = '500';
+  } else if (state === 'warn') {
+    ci.style.background = '#FEF3C7'; ci.style.opacity = '1';
+    icon.style.background = '#B45309';
+    icon.innerHTML = `<svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M5 3v3" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/><circle cx="5" cy="7.5" r="0.75" fill="#fff"/></svg>`;
+    label.style.color = '#854F0B'; label.style.fontWeight = '500';
+    if (time !== undefined) timeEl.textContent = `${time.toFixed(1)}s`;
   }
 }
 
@@ -658,12 +664,29 @@ async function continueLocalChecks(config, steps) {
   }
   setStepState('query-api', 'done', (Date.now() - t3) / 1000);
 
-  // Step 4: mDNS announcement (we wait briefly and assume OK if process is running)
+  // Step 4: mDNS / Bonjour check
   setStepState('mdns-announce', 'active');
   let t4 = startTimer('mdns-announce');
-  await sleep(1500);
+  const bonjourOk = await window.api.checkBonjour();
   stopTimer('mdns-announce');
-  setStepState('mdns-announce', 'done', 1.5);
+  if (bonjourOk) {
+    setStepState('mdns-announce', 'done', (Date.now() - t4) / 1000);
+  } else {
+    setStepState('mdns-announce', 'warn', (Date.now() - t4) / 1000);
+    const ci = document.getElementById('ci-mdns-announce');
+    if (ci) {
+      const msg = document.createElement('div');
+      msg.style.cssText = 'font-size:11px;color:#854F0B;margin-top:4px;padding:6px 10px;background:#FEF9EE;border-radius:6px;line-height:1.5;';
+      msg.innerHTML = `Bonjour is not installed — mDNS advertisement is unavailable.<br>
+        Nodes must be configured with this RDS's IP address directly.<br>
+        <a href="#" id="bonjour-link" style="color:#185FA5;">Install Bonjour for Windows →</a>`;
+      ci.insertAdjacentElement('afterend', msg);
+      msg.querySelector('#bonjour-link').addEventListener('click', (e) => {
+        e.preventDefault();
+        window.api.openExternal('https://support.apple.com/kb/DL999');
+      });
+    }
+  }
 
   onLaunchSuccess();
 }

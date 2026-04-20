@@ -28,19 +28,27 @@ Start an IS-04 compliant registry directly from the app. Configure network inter
 ### 🔍 Real-time Visualization
 See everything registered in your NMOS network at a glance:
 
-- **Overview** — Node count, sender/receiver/flow totals, heartbeat status, recent activity
-- **Nodes** — Node → device → sender/receiver hierarchy with live heartbeat indicators
+- **Overview** — Node count, sender/receiver/flow totals, recent activity
+- **Map** — Connection map showing sender/receiver links with hover highlighting
+- **Nodes** — Node → device → sender/receiver hierarchy; IS-05/07/08 API badges where advertised
 - **Senders** — SDP display, transport details, direct REST API access
 - **Receivers** — Connection status, linked sender navigation
 - **Flows / Sources** — Format summaries and source relationships
 - **Log** — Live log stream from the running RDS process
-- **Settings** — Adjust network interface, ports, priority, and logging level
+- **RDS Settings** — Network interface, ports, domain, priority, logging level
+- **App Settings** — Update mode (WebSocket or polling interval), poll interval
+
+### ⚡ WebSocket Updates
+By default the dashboard subscribes to the IS-04 Query API WebSocket feed and refreshes automatically when resources change. Falls back to interval polling if the RDS does not support WebSocket subscriptions.
 
 ### 🔗 Connect to Existing RDS (Monitor mode)
 Already have an RDS on your network? Connect to it as a read-only monitor without starting a new registry.
 
 ### 🌐 Open in Browser
 Each resource has an **Open in browser** button that opens the raw Query API response directly in your default browser.
+
+### 📡 mDNS / Bonjour
+nmos-cpp uses Apple Bonjour for mDNS service advertisement on Windows. If Bonjour is not installed, the app detects this at startup and shows a warning with an install link. Without Bonjour, NMOS nodes must be pointed to this RDS by IP address directly — all other functionality is unaffected.
 
 ---
 
@@ -49,6 +57,24 @@ Each resource has an **Open in browser** button that opens the raw Query API res
 Get the latest portable `.exe` from the [Releases](../../releases) page.
 
 > Windows x64 · No installation required · Just run
+
+**Windows ARM64 (Surface Pro X, Snapdragon PCs):**  
+The x64 binary runs on ARM64 Windows via the built-in x64 emulation layer — no separate download needed.  
+A native ARM64 build is planned; it is currently on hold pending ARM64 support for `cpprestsdk` in Conan Center.
+
+## Windows Firewall
+
+When you launch the RDS for the first time, Windows will show a firewall dialog asking whether to allow `nmos-cpp-registry.exe` to communicate on the network.
+
+- Check **both Private and Public networks** to allow access from devices on other subnets (L3).
+- If you only allowed Private networks and remote devices cannot connect, delete the existing rules and relaunch:
+
+```powershell
+# Run as Administrator
+netsh advfirewall firewall delete rule name="nmos-cpp-registry.exe"
+```
+
+The firewall rule is tied to the executable, not to specific ports — so changing the RDS port in Settings does not require any additional firewall configuration.
 
 ---
 
@@ -117,19 +143,27 @@ nmos-cpp-registryバイナリを同梱した1つのポータブル `.exe` にす
 ### 🔍 リアルタイム可視化
 NMOSネットワークの登録状況を一画面で把握できます：
 
-- **Overview** — ノード数・センダー/レシーバー/フロー数、ハートビート一覧、最近のアクティビティ
-- **Nodes** — ノード → デバイス → センダー/レシーバーの階層表示、ライブハートビートインジケーター
+- **Overview** — ノード数・センダー/レシーバー/フロー数、最近のアクティビティ
+- **Map** — センダー/レシーバーの接続マップ（ホバーでハイライト）
+- **Nodes** — ノード → デバイス → センダー/レシーバーの階層表示、IS-05/07/08 APIバッジ表示
 - **Senders** — SDP表示、トランスポート詳細、REST APIへの直接アクセス
 - **Receivers** — 接続状態、接続先センダーへのナビゲーション
 - **Flows / Sources** — フォーマットサマリー、ソース関係
 - **Log** — 実行中のRDSプロセスからのライブログストリーム
-- **Settings** — ネットワークインターフェース、ポート、プライオリティ、ログレベルの調整
+- **RDS Settings** — ネットワークインターフェース、ポート、ドメイン、プライオリティ、ログレベル
+- **App Settings** — 更新モード（WebSocket / インターバルポーリング）、ポーリング間隔
+
+### ⚡ WebSocket更新
+デフォルトでIS-04 Query APIのWebSocketフィードを購読し、リソースの変更を即時反映します。RDSがWebSocketサブスクリプションに対応していない場合は、インターバルポーリングに自動フォールバックします。
 
 ### 🔗 既存RDSへの接続（Monitorモード）
 ネットワーク上に既存のRDSがある場合、新しいレジストリを起動せずに読み取り専用で接続・監視できます。
 
 ### 🌐 ブラウザで開く
 各リソースに **Open in browser** ボタンがあり、Query APIのレスポンスをブラウザで直接確認できます。
+
+### 📡 mDNS / Bonjour
+nmos-cppはWindows上でのmDNSサービス広告にApple Bonjourを使用します。Bonjourがインストールされていない場合、起動時に警告とインストールリンクが表示されます。Bonjourなしでも他の機能はすべて正常に動作します。その場合はNMOSノード側でこのRDSのIPアドレスを直接設定してください。
 
 ---
 
@@ -138,6 +172,24 @@ NMOSネットワークの登録状況を一画面で把握できます：
 [Releases](../../releases) ページから最新のポータブル `.exe` をダウンロードしてください。
 
 > Windows x64 対応 · インストール不要 · そのまま実行
+
+**Windows ARM64（Surface Pro X、Snapdragon PC など）：**  
+x64版バイナリはWindows ARM64のx64エミュレーション機能でそのまま動作します。別途ダウンロードは不要です。  
+ネイティブARM64ビルドは計画中ですが、Conan Center における `cpprestsdk` のARM64対応待ちのため現在保留中です。
+
+## Windows ファイアウォールについて
+
+初回起動時、Windows が `nmos-cpp-registry.exe` の通信を許可するかどうかダイアログを表示します。
+
+- **プライベートネットワーク・パブリックネットワークの両方にチェック**を入れて許可してください。L3越えのサブネットからアクセスする場合はパブリックの許可が必要です。
+- プライベートのみ許可してしまい、リモートデバイスから接続できない場合は、既存のルールを削除して再起動してください：
+
+```powershell
+# 管理者として実行
+netsh advfirewall firewall delete rule name="nmos-cpp-registry.exe"
+```
+
+ファイアウォールルールはポートではなく exe に紐づいているため、設定画面でポートを変更しても追加の設定は不要です。
 
 ---
 

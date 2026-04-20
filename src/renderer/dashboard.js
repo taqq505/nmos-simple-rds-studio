@@ -10,12 +10,17 @@ const appState = {
 };
 
 // ─── Per-page state ───────────────────────────────────────────────────────────
-const nodeHeartbeatMap = new Map();  // nodeId -> timestamp (last seen in /nodes poll)
 const sdpCache         = new Map();  // senderId -> sdpText | 'error'
-let heartbeatInterval  = null;
 let uptimeStart        = Date.now();
 let uptimeInterval     = null;
 let refreshTimer       = null;
+
+// WebSocket state
+let wsConnections    = [];
+let wsWatchdog       = null;
+let currentRefreshFn = null;
+let wsUnsupported    = false;
+const WS_WATCHDOG_MS = 60000;
 
 // Filter / UI state (persists across refreshes)
 let sendersFilter   = 'all';
@@ -31,7 +36,6 @@ let nodeSearch         = '';
 let senderSearch       = '';
 let localLogUnsubscribe = null;
 
-const REFRESH_MS     = 5000;
 const LOG_REFRESH_MS = 2000;
 const QUERY_PATH     = '/x-nmos/query/v1.3';
 
@@ -56,6 +60,11 @@ async function init() {
   updateStatusBar();
   startUptimeClock();
   setupNav();
+
+  if (cfg.update_mode === 'websocket') {
+    initWebSocket();
+  }
+
   navigateTo('overview');
 }
 
@@ -81,71 +90,6 @@ function startUptimeClock() {
   }, 1000);
 }
 
-// ─── Heartbeat system ─────────────────────────────────────────────────────────
-// Update timestamps whenever nodes are fetched. Animate bars every second.
-function touchHeartbeats(nodes) {
-  const now = Date.now();
-  (nodes || []).forEach(n => nodeHeartbeatMap.set(n.id, now));
-}
-
-function hbElapsed(nodeId) {
-  const ts = nodeHeartbeatMap.get(nodeId);
-  if (!ts) return 99;
-  return Math.floor((Date.now() - ts) / 1000);
-}
-
-function hbColor(elapsed) {
-  if (elapsed <= 7)  return '#EAF3DE';
-  if (elapsed <= 10) return '#FAEEDA';
-  return '#FCEBEB';
-}
-
-function hbStatus(elapsed) {
-  if (elapsed <= 9)  return '<span class="pill pill-green">OK</span>';
-  if (elapsed <= 11) return '<span class="pill pill-amber">Delayed</span>';
-  return '<span class="pill pill-red">Expired</span>';
-}
-
-function hbDotClass(elapsed) {
-  if (elapsed <= 9)  return 'status-dot status-dot-ok';
-  if (elapsed <= 11) return 'status-dot status-dot-delayed';
-  return 'status-dot status-dot-expired';
-}
-
-function startHeartbeatInterval() {
-  if (heartbeatInterval) return;
-  heartbeatInterval = setInterval(() => {
-    nodeHeartbeatMap.forEach((ts, nodeId) => {
-      const elapsed = hbElapsed(nodeId);
-      // Update hb-fill bars
-      document.querySelectorAll(`[data-hb-node="${nodeId}"]`).forEach(el => {
-        const fill = el.querySelector('.hb-fill');
-        const txt  = el.querySelector('.hb-text');
-        const dot  = el.querySelector('.status-dot');
-        if (fill) {
-          const w = Math.min((elapsed / 12) * 96, 96);
-          fill.style.width = w + 'px';
-          fill.style.background = hbColor(elapsed);
-        }
-        if (txt)  txt.textContent = elapsed + 's';
-        if (dot)  dot.className = hbDotClass(elapsed);
-      });
-      // Update hb badges
-      document.querySelectorAll(`[data-hb-badge="${nodeId}"]`).forEach(el => {
-        const s = elapsed + 's';
-        const cls = elapsed <= 9  ? 'pill pill-green'
-                  : elapsed <= 11 ? 'pill pill-amber'
-                  : 'pill pill-red';
-        el.textContent = 'HB ' + s;
-        el.className   = cls;
-      });
-    });
-  }, 1000);
-}
-
-function stopHeartbeatInterval() {
-  if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
-}
 
 // ─── Navigation ───────────────────────────────────────────────────────────────
 function setupNav() {
@@ -167,12 +111,14 @@ function renderPage(page) {
   const main = document.getElementById('main-area');
   const pages = {
     overview:  renderOverview,
+    map:       renderMap,
     log:       renderLog,
     nodes:     renderNodes,
     senders:   renderSenders,
     receivers: renderReceivers,
-    flows:     renderFlows,
-    settings:  renderSettings,
+    flows:          renderFlows,
+    'rds-settings': renderRdsSettings,
+    'app-settings': renderAppSettings,
   };
   if (pages[page]) pages[page](main);
 }
@@ -180,10 +126,83 @@ function renderPage(page) {
 // ─── Refresh ──────────────────────────────────────────────────────────────────
 function startRefresh(fn, ms) {
   stopRefresh();
-  refreshTimer = setInterval(fn, ms || REFRESH_MS);
+  currentRefreshFn = fn;
+  const cfg = appState.config;
+  const pollMs = (cfg.poll_interval || 5) * 1000;
+  // Explicit ms (e.g. log page) always uses interval regardless of mode
+  if (!ms && cfg.update_mode === 'websocket' && !wsUnsupported) {
+    resetWsWatchdog();
+  } else {
+    refreshTimer = setInterval(() => { fn(); markLastUpdated(); }, ms || pollMs);
+  }
 }
 function stopRefresh() {
   if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
+  currentRefreshFn = null;
+}
+
+// ─── WebSocket subscriptions ──────────────────────────────────────────────────
+async function initWebSocket() {
+  wsUnsupported = false;
+  const resources = ['/nodes', '/devices', '/senders', '/receivers', '/flows', '/sources'];
+  for (const rp of resources) {
+    try {
+      const res = await window.api.fetch(`${appState.queryBase}${QUERY_PATH}/subscriptions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ max_update_rate_ms: 100, resource_path: rp, params: {}, persist: false }),
+        readBody: true,
+      });
+      if (!res.ok) continue;
+      const sub = JSON.parse(res.text);
+      if (!sub.ws_href) continue;
+      const ws = new WebSocket(sub.ws_href);
+      ws.onmessage = onWsMessage;
+      ws.onerror   = () => {};
+      ws.onclose   = () => {};
+      wsConnections.push(ws);
+    } catch {}
+  }
+  if (wsConnections.length === 0) {
+    wsUnsupported = true;
+    // Fall back: restart current page refresh as interval
+    if (currentRefreshFn) {
+      const pollMs = (appState.config.poll_interval || 5) * 1000;
+      refreshTimer = setInterval(currentRefreshFn, pollMs);
+    }
+  }
+  resetWsWatchdog();
+}
+
+function stopWebSocket() {
+  for (const ws of wsConnections) { try { ws.close(); } catch {} }
+  wsConnections = [];
+  if (wsWatchdog) { clearTimeout(wsWatchdog); wsWatchdog = null; }
+  wsUnsupported = false;
+}
+
+function onWsMessage() {
+  resetWsWatchdog();
+  if (currentRefreshFn) currentRefreshFn();
+  markLastUpdated();
+  showToast('Updated');
+}
+
+function markLastUpdated() {
+  const el = document.getElementById('sb-last-updated');
+  if (!el) return;
+  const now = new Date();
+  const hh = String(now.getHours()).padStart(2, '0');
+  const mm = String(now.getMinutes()).padStart(2, '0');
+  const ss = String(now.getSeconds()).padStart(2, '0');
+  el.textContent = `Updated: ${hh}:${mm}:${ss}`;
+}
+
+function resetWsWatchdog() {
+  if (wsWatchdog) clearTimeout(wsWatchdog);
+  wsWatchdog = setTimeout(() => {
+    if (currentRefreshFn) currentRefreshFn();
+  }, WS_WATCHDOG_MS);
 }
 
 // ─── API utilities ────────────────────────────────────────────────────────────
@@ -229,6 +248,19 @@ function errorHtml(msg) {
 function nodeLabel(n) {
   return n.label?.trim() || n.hostname || n.id?.substring(0, 8) || '—';
 }
+
+function nodeApiBadges(n) {
+  const serviceMap = {
+    'urn:x-nmos:service:connection':     'IS-05',
+    'urn:x-nmos:service:events':         'IS-07',
+    'urn:x-nmos:service:channelmapping': 'IS-08',
+  };
+  return (n.services || [])
+    .filter(s => serviceMap[s.type])
+    .map(s => `<span class="pill pill-blue" style="font-size:9px">${serviceMap[s.type]}</span>`)
+    .join('');
+}
+
 function resourceLabel(r) {
   return r.label?.trim() || r.id?.substring(0, 8) || '—';
 }
@@ -289,9 +321,6 @@ async function renderOverview(el, isRefresh = false) {
   const body = document.getElementById('overview-body');
   if (!body) return;
 
-  if (nodes) touchHeartbeats(nodes);
-  startHeartbeatInterval();
-
   const devMap = {};
   if (nodes) {
     const devices = await apiFetch(`${appState.queryBase}${QUERY_PATH}/devices`);
@@ -312,21 +341,12 @@ async function renderOverview(el, isRefresh = false) {
     <div class="section-title">Registered nodes</div>
     ${nodes && nodes.length ? `
     <table class="data-table">
-      <thead><tr><th>Node name</th><th>IP address</th><th>Devices</th><th>Last heartbeat</th><th>Status</th></tr></thead>
+      <thead><tr><th>Node name</th><th>IP address</th><th>Devices</th></tr></thead>
       <tbody>${nodes.map(n => {
-        const elapsed = hbElapsed(n.id);
-        const w = Math.min((elapsed / 12) * 96, 96);
         return `<tr>
           <td>${esc(nodeLabel(n))}</td>
           <td><span style="font-family:monospace;font-size:12px;color:var(--text-mono)">${esc(nodeIp(n))}</span></td>
           <td>${devMap[n.id] || 0}</td>
-          <td>
-            <div class="hb-bar" data-hb-node="${esc(n.id)}">
-              <div class="hb-track"><div class="hb-fill" style="width:${w}px;background:${hbColor(elapsed)};"></div></div>
-              <span class="hb-text">${elapsed}s</span>
-            </div>
-          </td>
-          <td>${hbStatus(elapsed)}</td>
         </tr>`;
       }).join('')}</tbody>
     </table>` : emptyHtml('No nodes registered')}
@@ -578,8 +598,6 @@ async function renderNodes(el, isRefresh = false) {
   if (!body) return;
 
   if (nodes) {
-    touchHeartbeats(nodes);
-    startHeartbeatInterval();
     const cnt = document.getElementById('nodes-count');
     if (cnt) cnt.textContent = `${nodes.length} nodes`;
   }
@@ -613,16 +631,13 @@ function rebuildNodeList() {
 
   body.innerHTML = filtered.map(n => {
     const devs = devByNode[n.id] || [];
-    const elapsed = hbElapsed(n.id);
-    const hbw = Math.min((elapsed / 12) * 96, 96);
     const isOpen = openNodeIds.has(n.id);
     return `<div class="acc-card" data-node-id="${esc(n.id)}">
       <div class="acc-header" onclick="toggleNode('${esc(n.id)}')">
-        <span class="${hbDotClass(elapsed)}" data-hb-node="${esc(n.id)}"></span>
         <span class="acc-label">${esc(nodeLabel(n))}</span>
         <span class="acc-meta" style="font-family:monospace">${esc(nodeIp(n))}</span>
         <span class="count-badge" style="margin-left:4px">${devs.length} device${devs.length!==1?'s':''}</span>
-        <span class="pill pill-green" data-hb-badge="${esc(n.id)}" style="font-size:10px">HB ${elapsed}s</span>
+        ${nodeApiBadges(n)}
         <span class="acc-chevron" id="chev-node-${esc(n.id)}" style="${isOpen?'transform:rotate(90deg)':''}">▶</span>
       </div>
       <div class="acc-body${isOpen?' open':''}" data-node-body="${esc(n.id)}" id="nbody-${esc(n.id)}">
@@ -1220,19 +1235,218 @@ function rebuildFlowsList() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SETTINGS PAGE
+// CONNECTION MAP PAGE
 // ─────────────────────────────────────────────────────────────────────────────
-async function renderSettings(el) {
-  const cfg    = appState.config;
+let mapFilter = 'all';
+
+async function renderMap(el, isRefresh = false) {
+  if (!isRefresh) {
+    mapFilter = 'all';
+    el.innerHTML = toolbar('Connection Map', `
+      <div class="filter-row" id="map-filter-btns">
+        <button class="filter-btn active-all" data-filter="all">All</button>
+        <button class="filter-btn" data-filter="connected">Connected only</button>
+      </div>
+    `) + `<div class="page-content" id="map-body" style="padding:0;overflow:auto;">${loadingHtml()}</div>`;
+
+    el.querySelectorAll('#map-filter-btns .filter-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        mapFilter = btn.dataset.filter;
+        el.querySelectorAll('#map-filter-btns .filter-btn').forEach(b =>
+          b.className = `filter-btn${b.dataset.filter === mapFilter ? ' active-' + mapFilter : ''}`
+        );
+        buildMap(senders, receivers, devMap, nodeMap);
+      });
+    });
+  }
+
+  const [senders, receivers, devices, nodes] = await Promise.all([
+    apiFetch(`${appState.queryBase}${QUERY_PATH}/senders`),
+    apiFetch(`${appState.queryBase}${QUERY_PATH}/receivers`),
+    apiFetch(`${appState.queryBase}${QUERY_PATH}/devices`),
+    apiFetch(`${appState.queryBase}${QUERY_PATH}/nodes`),
+  ]);
+
+  const body = document.getElementById('map-body');
+  if (!body) return;
+
+  if (!senders && !receivers) {
+    body.innerHTML = errorHtml('Failed to fetch data');
+    startRefresh(() => renderMap(el, true));
+    return;
+  }
+
+  const devMap  = Object.fromEntries((devices  || []).map(d => [d.id, d]));
+  const nodeMap = Object.fromEntries((nodes    || []).map(n => [n.id, n]));
+
+  function nodeNameFor(deviceId) {
+    const dev = devMap[deviceId];
+    const node = dev ? nodeMap[dev.node_id] : null;
+    return node ? (node.label || node.hostname || '') : '';
+  }
+
+  function buildMap(sndList, rcvList, devMap, nodeMap) {
+    const connectedSIds = new Set(
+      (rcvList || []).filter(r => r.subscription?.sender_id).map(r => r.subscription.sender_id)
+    );
+    const filtSenders   = mapFilter === 'connected'
+      ? (sndList || []).filter(s => connectedSIds.has(s.id))
+      : (sndList || []);
+    const filtReceivers = mapFilter === 'connected'
+      ? (rcvList || []).filter(r => r.subscription?.sender_id)
+      : (rcvList || []);
+
+    body.innerHTML = `
+      <div class="map-wrap" id="map-wrap">
+        <div class="map-col" id="map-senders-col">
+          <div class="map-col-header">SENDERS (${filtSenders.length})</div>
+          ${filtSenders.length ? filtSenders.map(s => `
+            <div class="map-card ${connectedSIds.has(s.id) ? 'connected' : ''}"
+                 data-sid="${esc(s.id)}"
+                 onclick="navigateTo('senders')">
+              <div class="map-card-label">${esc(s.label || s.id.slice(0,8))}</div>
+              <div class="map-card-meta">${esc(nodeNameFor(s.device_id))}</div>
+            </div>`).join('') : `<div style="font-size:11px;color:var(--text-tertiary);padding:8px 2px;">No senders</div>`}
+        </div>
+        <div class="map-mid" id="map-mid">
+          <svg id="map-svg" class="map-svg"></svg>
+        </div>
+        <div class="map-col" id="map-receivers-col">
+          <div class="map-col-header">RECEIVERS (${filtReceivers.length})</div>
+          ${filtReceivers.length ? filtReceivers.map(r => `
+            <div class="map-card ${r.subscription?.sender_id ? 'connected' : ''}"
+                 data-rid="${esc(r.id)}"
+                 onclick="navigateTo('receivers')">
+              <div class="map-card-label">${esc(r.label || r.id.slice(0,8))}</div>
+              <div class="map-card-meta">${esc(nodeNameFor(r.device_id))}</div>
+            </div>`).join('') : `<div style="font-size:11px;color:var(--text-tertiary);padding:8px 2px;">No receivers</div>`}
+        </div>
+      </div>`;
+
+    requestAnimationFrame(() => {
+      initLines(rcvList || []);
+      initHover(filtSenders, filtReceivers, rcvList || []);
+    });
+  }
+
+  function makePath(wrap, mid, senderId, receiverId, color, width, opacity) {
+    const sEl = wrap.querySelector(`[data-sid="${senderId}"]`);
+    const rEl = wrap.querySelector(`[data-rid="${receiverId}"]`);
+    if (!sEl || !rEl) return '';
+    const midRect = mid.getBoundingClientRect();
+    const sr = sEl.getBoundingClientRect();
+    const rr = rEl.getBoundingClientRect();
+    const x1 = 0, x2 = midRect.width, cx = midRect.width / 2;
+    const y1 = sr.top + sr.height / 2 - midRect.top;
+    const y2 = rr.top + rr.height / 2 - midRect.top;
+    return `<path d="M${x1},${y1} C${cx},${y1} ${cx},${y2} ${x2},${y2}"
+      stroke="${color}" stroke-width="${width}" fill="none" opacity="${opacity}"
+      data-line="${senderId}:${receiverId}"/>`;
+  }
+
+  function setSvgSize(svg, wrap, mid) {
+    const midRect  = mid.getBoundingClientRect();
+    const wrapRect = wrap.getBoundingClientRect();
+    svg.setAttribute('width',  midRect.width);
+    svg.setAttribute('height', Math.max(wrapRect.height, 100));
+  }
+
+  function initLines(rcvList) {
+    const wrap = document.getElementById('map-wrap');
+    const svg  = document.getElementById('map-svg');
+    const mid  = document.getElementById('map-mid');
+    if (!wrap || !svg || !mid) return;
+    setSvgSize(svg, wrap, mid);
+    svg.innerHTML = rcvList
+      .filter(r => r.subscription?.sender_id)
+      .map(r => makePath(wrap, mid, r.subscription.sender_id, r.id, '#ccc', 1.5, 1))
+      .join('');
+  }
+
+  function initHover(filtSenders, filtReceivers, rcvList) {
+    const wrap = document.getElementById('map-wrap');
+    const svg  = document.getElementById('map-svg');
+    const mid  = document.getElementById('map-mid');
+    if (!wrap || !svg || !mid) return;
+
+    // sender_id → [receiverId, ...]
+    const senderToRcvs = {};
+    rcvList.forEach(r => {
+      if (!r.subscription?.sender_id) return;
+      (senderToRcvs[r.subscription.sender_id] ||= []).push(r.id);
+    });
+    // receiverId → sender_id
+    const rcvToSender = Object.fromEntries(
+      rcvList.filter(r => r.subscription?.sender_id).map(r => [r.id, r.subscription.sender_id])
+    );
+
+    function clearHighlight() {
+      wrap.querySelectorAll('.map-card').forEach(c => c.classList.remove('dim','focus-sender','focus-receiver','focus-related'));
+      initLines(rcvList);
+    }
+
+    function highlightSender(senderId) {
+      const relatedRcvs = senderToRcvs[senderId] || [];
+      wrap.querySelectorAll('.map-card').forEach(c => {
+        const sid = c.dataset.sid, rid = c.dataset.rid;
+        if (sid === senderId) c.classList.add('focus-sender');
+        else if (rid && relatedRcvs.includes(rid)) c.classList.add('focus-receiver');
+        else c.classList.add('dim');
+      });
+      setSvgSize(svg, wrap, mid);
+      svg.innerHTML = rcvList.filter(r => r.subscription?.sender_id).map(r => {
+        const isActive = r.subscription.sender_id === senderId;
+        return makePath(wrap, mid, r.subscription.sender_id, r.id,
+          isActive ? '#185FA5' : '#e0e0e0', isActive ? 2 : 1, 1);
+      }).join('');
+    }
+
+    function highlightReceiver(receiverId) {
+      const senderId   = rcvToSender[receiverId];
+      const siblings   = senderId ? (senderToRcvs[senderId] || []) : [];
+      wrap.querySelectorAll('.map-card').forEach(c => {
+        const sid = c.dataset.sid, rid = c.dataset.rid;
+        if (rid === receiverId) c.classList.add('focus-receiver');
+        else if (senderId && sid === senderId) c.classList.add('focus-sender');
+        else if (rid && siblings.includes(rid)) c.classList.add('focus-related');
+        else c.classList.add('dim');
+      });
+      setSvgSize(svg, wrap, mid);
+      svg.innerHTML = rcvList.filter(r => r.subscription?.sender_id).map(r => {
+        const isActive = r.id === receiverId || (senderId && r.subscription.sender_id === senderId && siblings.includes(r.id));
+        return makePath(wrap, mid, r.subscription.sender_id, r.id,
+          r.id === receiverId ? '#185FA5' : isActive ? '#9b94e8' : '#e0e0e0',
+          r.id === receiverId ? 2 : 1, 1);
+      }).join('');
+    }
+
+    wrap.querySelectorAll('[data-sid]').forEach(el => {
+      el.addEventListener('mouseenter', () => highlightSender(el.dataset.sid));
+      el.addEventListener('mouseleave', clearHighlight);
+    });
+    wrap.querySelectorAll('[data-rid]').forEach(el => {
+      el.addEventListener('mouseenter', () => highlightReceiver(el.dataset.rid));
+      el.addEventListener('mouseleave', clearHighlight);
+    });
+  }
+
+  buildMap(senders, receivers, devMap, nodeMap);
+  startRefresh(() => renderMap(el, true));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RDS SETTINGS PAGE
+// ─────────────────────────────────────────────────────────────────────────────
+async function renderRdsSettings(el) {
+  const cfg     = appState.config;
   const isLocal = cfg.mode === 'local';
-  const version = await window.api.getVersion().catch(() => '0.1.0');
 
   const nicList = isLocal ? await window.api.getNicList() : [];
   const nicOptions = nicList.map(n =>
     `<option value="${esc(n.value)}" ${n.value===cfg.host_address?'selected':''}>${esc(n.label)}</option>`
   ).join('');
 
-  el.innerHTML = toolbar('Settings') + `
+  el.innerHTML = toolbar('RDS Settings') + `
     <div class="page-content">
       ${isLocal ? '' : `<div style="background:var(--blue-50);border-radius:8px;padding:8px 12px;font-size:12px;color:var(--blue-800);margin-bottom:16px;">Connected to external RDS — settings are read-only.</div>`}
 
@@ -1283,26 +1497,21 @@ async function renderSettings(el) {
         </div>
       </div>
       <div class="setting-row">
-        <div class="setting-info"><div class="setting-label">Error log file</div><div class="setting-desc">Leave empty to write to stderr</div></div>
-        <div class="setting-control">
-          <input class="s-input" id="s-errlog" value="${esc(cfg.error_log||'')}" style="width:180px" ${isLocal?'':'readonly'}>
+        <div class="setting-info"><div class="setting-label">Error log file</div><div class="setting-desc">nmos-cpp error/event log</div></div>
+        <div class="setting-control" style="display:flex;gap:6px;align-items:center;">
+          <span id="s-errlog-path" style="font-size:11px;font-family:monospace;color:var(--text-secondary);max-width:260px;word-break:break-all;"></span>
+          <button class="btn-sm" id="btn-save-errlog">Save as…</button>
         </div>
       </div>
       <div class="setting-row">
         <div class="setting-info"><div class="setting-label">Access log file</div><div class="setting-desc">HTTP access log in Common Log Format</div></div>
-        <div class="setting-control">
-          <input class="s-input" id="s-acclog" value="${esc(cfg.access_log||'')}" style="width:180px" ${isLocal?'':'readonly'}>
+        <div class="setting-control" style="display:flex;gap:6px;align-items:center;">
+          <span id="s-acclog-path" style="font-size:11px;font-family:monospace;color:var(--text-secondary);max-width:260px;word-break:break-all;"></span>
+          <button class="btn-sm" id="btn-save-acclog">Save as…</button>
         </div>
       </div>
 
-      <div class="settings-section-title" style="margin-top:16px">ABOUT</div>
-      <div class="settings-about">
-        <strong>NMOS Simple RDS Studio</strong> &nbsp; v${esc(version)}<br>
-        RDS engine: nmos-cpp (<a href="#" onclick="return false">sony/nmos-cpp</a>)<br>
-        License: Apache License 2.0
-      </div>
-
-      ${isLocal ? `<div class="restart-notice">
+      ${isLocal ? `<div class="restart-notice" style="margin-top:16px">
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="6" stroke="#854F0B" stroke-width="1.2"/><path d="M7 4v3.5" stroke="#854F0B" stroke-width="1.2" stroke-linecap="round"/><circle cx="7" cy="10" r="0.7" fill="#854F0B"/></svg>
         Network and priority settings require a RDS restart to take effect.
       </div>` : ''}
@@ -1316,7 +1525,7 @@ async function renderSettings(el) {
     </div>
   `;
 
-  function collectConfig() {
+  function collectRdsCfg() {
     return {
       ...cfg,
       host_address:      isLocal ? (el.querySelector('#s-nic')?.value ?? cfg.host_address) : cfg.host_address,
@@ -1325,21 +1534,24 @@ async function renderSettings(el) {
       domain:            el.querySelector('#s-domain')?.value         ?? cfg.domain,
       priority:          parseInt(el.querySelector('#s-priority')?.value) ?? cfg.priority,
       logging_level:     parseInt(el.querySelector('#s-loglevel')?.value) ?? cfg.logging_level,
-      error_log:         el.querySelector('#s-errlog')?.value         ?? cfg.error_log,
-      access_log:        el.querySelector('#s-acclog')?.value         ?? cfg.access_log,
     };
   }
 
   el.querySelector('#btn-save-restart')?.addEventListener('click', async () => {
-    const newCfg = collectConfig();
+    const ok = confirm('Save RDS settings and restart the RDS process?\nAll registered nodes will re-register automatically.');
+    if (!ok) return;
+    const newCfg = collectRdsCfg();
+    appState.config = newCfg;
     await window.api.saveConfig(newCfg);
     await window.api.restart();
   });
 
   el.querySelector('#btn-save-only')?.addEventListener('click', async () => {
-    const newCfg = collectConfig();
+    const ok = confirm('Save RDS settings without restarting?\nNetwork/port changes will take effect on next restart.');
+    if (!ok) return;
+    const newCfg = collectRdsCfg();
+    appState.config = newCfg;
     await window.api.saveConfig(newCfg);
-    // Apply log level immediately
     if (isLocal) {
       window.api.fetch(`${appState.regBase}/settings/all`, {
         method: 'PATCH', headers: {'Content-Type':'application/json'},
@@ -1350,15 +1562,98 @@ async function renderSettings(el) {
     if (fb) { fb.textContent = '✓ Settings saved'; setTimeout(() => fb.textContent = '', 2000); }
   });
 
+  window.api.getLogPaths().then(({ error, access }) => {
+    const errEl = el.querySelector('#s-errlog-path');
+    const accEl = el.querySelector('#s-acclog-path');
+    if (errEl) errEl.textContent = error;
+    if (accEl) accEl.textContent = access;
+  });
+
+  el.querySelector('#btn-save-errlog')?.addEventListener('click', async () => {
+    const { error } = await window.api.getLogPaths();
+    await window.api.saveLogAs(error);
+  });
+
+  el.querySelector('#btn-save-acclog')?.addEventListener('click', async () => {
+    const { access } = await window.api.getLogPaths();
+    await window.api.saveLogAs(access);
+  });
+
   el.querySelector('#btn-stop-rds')?.addEventListener('click', async () => {
     if (isLocal) {
       const ok = confirm('Stop the RDS? All registered nodes will be disconnected.');
       if (!ok) return;
     }
     stopRefresh();
+    stopWebSocket();
     clearInterval(uptimeInterval);
-    stopHeartbeatInterval();
     await window.api.restart();
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// APP SETTINGS PAGE
+// ─────────────────────────────────────────────────────────────────────────────
+async function renderAppSettings(el) {
+  const cfg     = appState.config;
+  const version = await window.api.getVersion().catch(() => '0.1.0');
+
+  el.innerHTML = toolbar('App Settings') + `
+    <div class="page-content">
+
+      <div class="settings-section-title">UPDATE</div>
+      <div class="setting-row">
+        <div class="setting-info"><div class="setting-label">Update mode</div></div>
+        <div class="setting-control" style="display:flex;gap:16px;align-items:center;">
+          <label style="display:flex;gap:6px;align-items:center;font-size:13px;cursor:pointer">
+            <input type="radio" name="s-update-mode" value="interval" ${(cfg.update_mode||'websocket')==='interval'?'checked':''}> Interval
+          </label>
+          <label style="display:flex;gap:6px;align-items:center;font-size:13px;cursor:pointer">
+            <input type="radio" name="s-update-mode" value="websocket" ${(cfg.update_mode||'websocket')==='websocket'?'checked':''}> WebSocket
+          </label>
+        </div>
+      </div>
+      <div class="setting-row">
+        <div class="setting-info"><div class="setting-label">Poll interval</div><div class="setting-desc">Interval mode polling / WS fallback check</div></div>
+        <div class="setting-control" style="display:flex;gap:6px;align-items:center;">
+          <input class="s-input" id="s-poll-interval" type="number" value="${cfg.poll_interval||5}" style="width:60px" min="1" max="300"> <span style="font-size:12px;color:var(--text-secondary)">sec</span>
+        </div>
+      </div>
+
+      <div class="settings-section-title" style="margin-top:16px">ABOUT</div>
+      <div class="settings-about">
+        <strong>NMOS Simple RDS Studio</strong> &nbsp; v${esc(version)}<br>
+        RDS engine: nmos-cpp (<a href="#" onclick="return false">sony/nmos-cpp</a>)<br>
+        License: Apache License 2.0
+      </div>
+
+      <div class="settings-buttons">
+        <button class="btn-save-only" id="btn-app-save">Save</button>
+      </div>
+      <div id="app-save-feedback" style="font-size:12px;color:var(--green-600);margin-top:8px;"></div>
+    </div>
+  `;
+
+  el.querySelector('#btn-app-save')?.addEventListener('click', async () => {
+    const newCfg = {
+      ...cfg,
+      update_mode:   el.querySelector('input[name="s-update-mode"]:checked')?.value ?? (cfg.update_mode || 'websocket'),
+      poll_interval: parseInt(el.querySelector('#s-poll-interval')?.value) || cfg.poll_interval || 5,
+    };
+    appState.config = newCfg;
+    await window.api.saveConfig(newCfg);
+
+    const oldMode = cfg.update_mode;
+    if (newCfg.update_mode === 'websocket' && oldMode !== 'websocket') {
+      stopRefresh();
+      stopWebSocket();
+      initWebSocket();
+    } else if (newCfg.update_mode !== 'websocket' && oldMode === 'websocket') {
+      stopWebSocket();
+    }
+
+    const fb = el.querySelector('#app-save-feedback');
+    if (fb) { fb.textContent = '✓ Saved'; setTimeout(() => fb.textContent = '', 2000); }
   });
 }
 

@@ -19,6 +19,9 @@ contextBridge.exposeInMainWorld('api', {
   /** @returns {Promise<string>} App version string */
   getVersion: () => ipcRenderer.invoke('app:getVersion'),
 
+  /** @returns {Promise<boolean>} true if Bonjour service is running */
+  checkBonjour: () => ipcRenderer.invoke('app:checkBonjour'),
+
   // ─── RDS process ────────────────────────────────────────────────────────────
   /** Start nmos-cpp-registry with given config */
   startRds: (config) => ipcRenderer.invoke('rds:start', config),
@@ -72,6 +75,12 @@ contextBridge.exposeInMainWorld('api', {
   // ─── Local RDS log stream ────────────────────────────────────────────────────
   /** Get current buffered log lines from RDS process stdout/stderr */
   getLogBuffer: () => ipcRenderer.invoke('log:getBuffer'),
+
+/** Get full paths of error/access log files */
+  getLogPaths: () => ipcRenderer.invoke('log:getLogPaths'),
+
+  /** Open Save As dialog and copy log file to chosen location */
+  saveLogAs: (srcPath) => ipcRenderer.invoke('log:saveAs', srcPath),
 
   /**
    * Subscribe to live log lines from the RDS process.

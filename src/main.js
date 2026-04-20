@@ -24,6 +24,8 @@ const DEFAULT_CONFIG = {
   logging_level: 0,
   error_log: 'rds_error.log',
   access_log: 'rds_access.log',
+  update_mode: 'websocket',
+  poll_interval: 5,
 };
 
 function loadConfig() {
@@ -327,8 +329,33 @@ ipcMain.handle('app:openDashboard', () => {
 });
 
 ipcMain.handle('app:getVersion', () => app.getVersion());
+
+ipcMain.handle('app:checkBonjour', () => {
+  if (process.platform !== 'win32') return true;
+  return new Promise((resolve) => {
+    const { exec } = require('child_process');
+    exec('sc query "Bonjour Service"', (err, stdout) => {
+      resolve(!err && stdout.includes('RUNNING'));
+    });
+  });
+});
 ipcMain.handle('app:openExternal', (_e, url) => shell.openExternal(url));
+
+
 ipcMain.handle('log:getBuffer', () => [...rdsLogBuffer]);
+ipcMain.handle('log:getLogPaths', () => ({
+  error:  path.join(app.getPath('userData'), 'rds_error.log'),
+  access: path.join(app.getPath('userData'), 'rds_access.log'),
+}));
+ipcMain.handle('log:saveAs', async (_e, srcPath) => {
+  const { filePath, canceled } = await dialog.showSaveDialog({
+    defaultPath: path.basename(srcPath),
+    filters: [{ name: 'Log files', extensions: ['log', 'txt'] }, { name: 'All files', extensions: ['*'] }],
+  });
+  if (canceled || !filePath) return { ok: false };
+  fs.copyFileSync(srcPath, filePath);
+  return { ok: true };
+});
 
 /**
  * Proxy HTTP request via Node.js to bypass renderer CORS restrictions.
