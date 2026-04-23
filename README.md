@@ -9,7 +9,7 @@ Download, double-click, and your NMOS network has an RDS.
 
 ## What is this?
 
-NMOS Simple RDS Studio bundles [sony/nmos-cpp](https://github.com/sony/nmos-cpp) — a production-grade IS-04 registry — together with a graphical interface into one portable executable. It is designed for engineers who need an RDS running quickly, without the overhead of deploying and managing a server.
+NMOS Simple RDS Studio bundles [sony/nmos-cpp](https://github.com/sony/nmos-cpp) — a production-grade IS-04 registry — together with a graphical interface into one portable executable. Built on [Electron](https://www.electronjs.org/), it packages the nmos-cpp-registry binary and a web-based UI into a single self-contained `.exe`. It is designed for engineers who need an RDS running quickly, without the overhead of deploying and managing a server.
 
 ### This is an RDS, not just a viewer.
 
@@ -124,7 +124,7 @@ nmos-cpp is copyright Sony Corporation, licensed under Apache 2.0.
 
 ## これは何？
 
-NMOS Simple RDS Studioは、[sony/nmos-cpp](https://github.com/sony/nmos-cpp)（プロダクション品質のIS-04レジストリ）とGUIを1つのポータブルexeにまとめたアプリケーションです。サーバーの構築・管理コストをかけずに、すぐRDSを使いたいエンジニアのために作られています。
+NMOS Simple RDS Studioは、[sony/nmos-cpp](https://github.com/sony/nmos-cpp)（プロダクション品質のIS-04レジストリ）とGUIを1つのポータブルexeにまとめたアプリケーションです。[Electron](https://www.electronjs.org/)をベースに、nmos-cpp-registryバイナリとWebベースのUIを1つの `.exe` にパッケージしています。サーバーの構築・管理コストをかけずに、すぐRDSを使いたいエンジニアのために作られています。
 
 ### これはビューアではなく、RDSです。
 

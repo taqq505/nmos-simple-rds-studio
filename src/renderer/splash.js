@@ -373,6 +373,7 @@ function showStep2b() {
 
   document.getElementById('btn-back').addEventListener('click', () => {
     if (unsubMdns) { unsubMdns(); unsubMdns = null; }
+    window.api.stopMdnsBrowse();
     goBack();
   });
   document.getElementById('btn-connect').addEventListener('click', onConnect);
@@ -382,7 +383,8 @@ function showStep2b() {
     document.getElementById(id).addEventListener('change', updatePreview2b);
   });
 
-  // Subscribe to mDNS discovery events
+  // Start mDNS browse and subscribe to discovery events
+  window.api.startMdnsBrowse();
   unsubMdns = window.api.onRdsDiscovered((rds) => {
     const list = document.getElementById('rds-list');
     if (!list) return;
@@ -415,6 +417,7 @@ function updatePreview2b() {
 
 function onConnect() {
   if (unsubMdns) { unsubMdns(); unsubMdns = null; }
+  window.api.stopMdnsBrowse();
   const proto   = document.getElementById('sel-proto').value;
   const ip      = document.getElementById('inp-ip').value;
   const qryPort = parseInt(document.getElementById('inp-port').value) || 3211;

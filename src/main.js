@@ -5,6 +5,7 @@ const os = require('os');
 const http = require('http');
 const https = require('https');
 const { spawn } = require('child_process');
+const { Bonjour } = require('bonjour-service');
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -128,6 +129,30 @@ function startLogFileTail() {
 
 function stopLogFileTail() {
   if (logFileTailer) { clearInterval(logFileTailer); logFileTailer = null; }
+}
+
+// ─── mDNS Browse ─────────────────────────────────────────────────────────────
+
+let mdnsBrowser = null;
+let bonjour = null;
+
+function startMdnsBrowse() {
+  stopMdnsBrowse();
+  bonjour = new Bonjour();
+  mdnsBrowser = bonjour.find({ type: 'nmos-registration' }, (service) => {
+    if (splashWindow) {
+      splashWindow.webContents.send('mdns:discovered', {
+        name: service.name,
+        host: service.referer?.address || service.host,
+        port: service.port,
+      });
+    }
+  });
+}
+
+function stopMdnsBrowse() {
+  if (mdnsBrowser) { mdnsBrowser.stop(); mdnsBrowser = null; }
+  if (bonjour) { bonjour.destroy(); bonjour = null; }
 }
 
 // ─── Windows ──────────────────────────────────────────────────────────────────
@@ -329,6 +354,8 @@ ipcMain.handle('app:openDashboard', () => {
 });
 
 ipcMain.handle('app:getVersion', () => app.getVersion());
+ipcMain.handle('mdns:startBrowse', () => { startMdnsBrowse(); return true; });
+ipcMain.handle('mdns:stopBrowse',  () => { stopMdnsBrowse();  return true; });
 
 ipcMain.handle('app:checkBonjour', () => {
   if (process.platform !== 'win32') return true;

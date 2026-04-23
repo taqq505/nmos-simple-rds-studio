@@ -22,6 +22,11 @@ contextBridge.exposeInMainWorld('api', {
   /** @returns {Promise<boolean>} true if Bonjour service is running */
   checkBonjour: () => ipcRenderer.invoke('app:checkBonjour'),
 
+  /** Start mDNS browse for _nmos-registration._tcp */
+  startMdnsBrowse: () => ipcRenderer.invoke('mdns:startBrowse'),
+  /** Stop mDNS browse */
+  stopMdnsBrowse: () => ipcRenderer.invoke('mdns:stopBrowse'),
+
   // ─── RDS process ────────────────────────────────────────────────────────────
   /** Start nmos-cpp-registry with given config */
   startRds: (config) => ipcRenderer.invoke('rds:start', config),
