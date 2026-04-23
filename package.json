@@ -16,6 +16,7 @@
   "build": {
     "appId": "com.nmos-simple.rds-studio",
     "productName": "NMOS Simple RDS Studio",
+    "artifactName": "NMOS-Simple-RDS-Studio-${version}.${ext}",
     "copyright": "Copyright © 2026 taqq505",
     "files": [
       "src/**/*",
