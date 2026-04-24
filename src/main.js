@@ -133,26 +133,94 @@ function stopLogFileTail() {
 
 // ─── mDNS Browse ─────────────────────────────────────────────────────────────
 
-let mdnsBrowser = null;
-let bonjour = null;
+const DNS_SD_PATHS = [
+  'C:\\Program Files\\Bonjour\\dns-sd.exe',
+  'C:\\Program Files (x86)\\Bonjour\\dns-sd.exe',
+];
+
+let mdnsBrowser   = null;  // child_process or bonjour browser
+let bonjourInst   = null;  // bonjour-service instance
+
+function getDnsSdPath() {
+  return DNS_SD_PATHS.find(p => fs.existsSync(p)) || null;
+}
 
 function startMdnsBrowse() {
   stopMdnsBrowse();
-  bonjour = new Bonjour();
-  mdnsBrowser = bonjour.find({ type: 'nmos-registration' }, (service) => {
-    if (splashWindow) {
-      splashWindow.webContents.send('mdns:discovered', {
+  const dnsSd = getDnsSdPath();
+  if (dnsSd) {
+    startMdnsBrowseDnsSd(dnsSd);
+  } else {
+    startMdnsBrowseJs();
+  }
+}
+
+function startMdnsBrowseDnsSd(dnsSdPath) {
+  mdnsBrowser = spawn(dnsSdPath, ['-B', '_nmos-registration._tcp', 'local.']);
+  mdnsBrowser.stdout.on('data', (data) => {
+    for (const line of data.toString().split('\n')) {
+      const m = line.match(/\s+Add\s+\d+\s+\d+\s+\S+\s+\S+\s+(.+)/);
+      if (!m) continue;
+      resolveNmosService(dnsSdPath, m[1].trim());
+    }
+  });
+  mdnsBrowser.on('error', () => {});
+}
+
+function resolveNmosService(dnsSdPath, instanceName) {
+  // Try to extract IP/port from nmos-cpp naming convention: *_A-B-C-D_PORT
+  const nmosMatch = instanceName.match(/(\d+)-(\d+)-(\d+)-(\d+)_(\d+)$/);
+  if (nmosMatch) {
+    const host = `${nmosMatch[1]}.${nmosMatch[2]}.${nmosMatch[3]}.${nmosMatch[4]}`;
+    const port = parseInt(nmosMatch[5]);
+    if (splashWindow) splashWindow.webContents.send('mdns:discovered', { name: instanceName, host, port });
+    return;
+  }
+
+  // Fallback: dns-sd -L lookup
+  const resolver = spawn(dnsSdPath, ['-L', instanceName, '_nmos-registration._tcp', 'local.']);
+  let done = false;
+  resolver.stdout.on('data', (data) => {
+    if (done) return;
+    const m = data.toString().match(/can be reached at ([^:]+):(\d+)/);
+    if (!m) return;
+    done = true;
+    resolver.kill();
+    const hostname = m[1].replace(/\.$/, '');
+    const port = parseInt(m[2]);
+    require('dns').lookup(hostname, { family: 4 }, (_err, address) => {
+      if (splashWindow) splashWindow.webContents.send('mdns:discovered', {
+        name: instanceName, host: address || hostname, port,
+      });
+    });
+  });
+  resolver.on('error', () => {});
+  setTimeout(() => { try { resolver.kill(); } catch {} }, 3000);
+}
+
+function startMdnsBrowseJs() {
+  try {
+    bonjourInst = new Bonjour();
+    const browser = bonjourInst.find({ type: 'nmos-registration' }, (service) => {
+      if (splashWindow) splashWindow.webContents.send('mdns:discovered', {
         name: service.name,
         host: service.referer?.address || service.host,
         port: service.port,
       });
-    }
-  });
+    });
+    mdnsBrowser = browser;
+  } catch {}
 }
 
 function stopMdnsBrowse() {
-  if (mdnsBrowser) { mdnsBrowser.stop(); mdnsBrowser = null; }
-  if (bonjour) { bonjour.destroy(); bonjour = null; }
+  if (mdnsBrowser) {
+    try {
+      if (typeof mdnsBrowser.kill === 'function') mdnsBrowser.kill();
+      else if (typeof mdnsBrowser.stop === 'function') mdnsBrowser.stop();
+    } catch {}
+    mdnsBrowser = null;
+  }
+  if (bonjourInst) { try { bonjourInst.destroy(); } catch {} bonjourInst = null; }
 }
 
 // ─── Windows ──────────────────────────────────────────────────────────────────
