@@ -17,11 +17,23 @@ let stepHistory = [];     // For back navigation
 let unsubRdsProgress = null;
 let unsubMdns = null;
 let stepTimers = {};      // { stepIndex: intervalId }
+let discoveredRdsList = [];  // mDNS discovered RDS instances
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 
 async function init() {
   savedConfig = await window.api.loadConfig();
+
+  // Start mDNS browse immediately so results arrive while user reads the screen
+  window.api.startMdnsBrowse();
+  unsubMdns = window.api.onRdsDiscovered((rds) => {
+    const key = `${rds.host}:${rds.port}`;
+    if (discoveredRdsList.find(r => `${r.host}:${r.port}` === key)) return;
+    discoveredRdsList.push(rds);
+    renderDiscoveredList('step1-rds-list');
+    renderDiscoveredList('rds-list');
+  });
+
   showStep1();
 }
 
@@ -70,10 +82,11 @@ function showStep1() {
       <div style="font-size:12px; color:#888; margin-top:3px;">IS-04 Registration &amp; Discovery</div>
     </div>
 
-    <div style="display:flex; align-items:center; gap:8px; background:#f9f9f9; border-radius:8px; padding:10px 14px; margin-bottom:24px;">
+    <div style="display:flex; align-items:center; gap:8px; background:#f9f9f9; border-radius:8px; padding:10px 14px; margin-bottom:8px;">
       <div class="spinner spinner-md"></div>
       <span style="font-size:12px; color:#888;">Searching for RDS on network...</span>
     </div>
+    <div id="step1-rds-list" style="margin-bottom:8px;"></div>
 
     <div style="font-size:11px; color:#bbb; text-align:center; margin-bottom:16px;">Select startup mode</div>
 
@@ -131,6 +144,9 @@ function showStep1() {
   }
   document.getElementById('btn-launch').addEventListener('click', showStep2a);
   document.getElementById('btn-connect').addEventListener('click', showStep2b);
+
+  // Populate already-discovered RDS (may have arrived before this render)
+  renderDiscoveredList('step1-rds-list');
 }
 
 function addOptCardStyles() {
@@ -156,6 +172,44 @@ function addOptCardStyles() {
     }
   `;
   document.head.appendChild(style);
+}
+
+function renderDiscoveredList(containerId) {
+  const el = document.getElementById(containerId);
+  if (!el || discoveredRdsList.length === 0) return;
+  el.innerHTML = discoveredRdsList.map((rds, i) => `
+    <div class="opt-card" id="rds-disc-${containerId}-${i}" style="border-color:#B5D4F4; margin-bottom:6px;">
+      <div class="opt-icon" style="background:#E6F1FB;">
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+          <circle cx="5" cy="9" r="2.5" stroke="#185FA5" stroke-width="1.5"/>
+          <circle cx="13" cy="9" r="2.5" stroke="#185FA5" stroke-width="1.5"/>
+          <path d="M7.5 9h3" stroke="#185FA5" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div style="flex:1;">
+        <div style="font-size:13px; font-weight:500; color:#111;">${esc(rds.name || 'RDS')}</div>
+        <div style="font-size:11px; color:#888; font-family:monospace;">${esc(rds.host)}:${rds.port}</div>
+      </div>
+      <span class="badge badge-blue">mDNS</span>
+    </div>
+  `).join('');
+  discoveredRdsList.forEach((rds, i) => {
+    const el2 = document.getElementById(`rds-disc-${containerId}-${i}`);
+    if (el2) el2.addEventListener('click', () => connectDiscovered(rds));
+  });
+}
+
+function connectDiscovered(rds) {
+  if (unsubMdns) { unsubMdns(); unsubMdns = null; }
+  window.api.stopMdnsBrowse();
+  const url = `http://${rds.host}:${rds.port}`;
+  const config = {
+    ...(savedConfig || {}),
+    mode: 'remote',
+    remote_url: url,
+    remote_reg_url: url,
+  };
+  showStep3({ mode: 'remote', config });
 }
 
 async function onResume() {
@@ -372,8 +426,6 @@ function showStep2b() {
   `;
 
   document.getElementById('btn-back').addEventListener('click', () => {
-    if (unsubMdns) { unsubMdns(); unsubMdns = null; }
-    window.api.stopMdnsBrowse();
     goBack();
   });
   document.getElementById('btn-connect').addEventListener('click', onConnect);
@@ -383,28 +435,8 @@ function showStep2b() {
     document.getElementById(id).addEventListener('change', updatePreview2b);
   });
 
-  // Start mDNS browse and subscribe to discovery events
-  window.api.startMdnsBrowse();
-  unsubMdns = window.api.onRdsDiscovered((rds) => {
-    const list = document.getElementById('rds-list');
-    if (!list) return;
-    const item = document.createElement('div');
-    item.style.cssText = 'border:0.5px solid #e0e0e0; border-radius:8px; padding:10px 12px; cursor:pointer; display:flex; align-items:center; gap:10px;';
-    item.innerHTML = `
-      <div style="width:8px; height:8px; border-radius:50%; background:#28C840; flex-shrink:0;"></div>
-      <div style="flex:1;">
-        <div style="font-size:13px; font-weight:500; color:#111;">${rds.name || 'nmos-cpp-registry'}</div>
-        <div style="font-size:11px; color:#888; font-family:monospace;">${rds.host}:${rds.port}</div>
-      </div>
-      <span class="badge badge-blue">mDNS</span>
-    `;
-    item.addEventListener('click', () => {
-      document.getElementById('inp-ip').value = rds.host;
-      document.getElementById('inp-port').value = rds.port;
-      updatePreview2b();
-    });
-    list.appendChild(item);
-  });
+  // Populate already-discovered RDS into the list
+  renderDiscoveredList('rds-list');
 }
 
 function updatePreview2b() {
