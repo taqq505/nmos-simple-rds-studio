@@ -174,6 +174,10 @@ function addOptCardStyles() {
   document.head.appendChild(style);
 }
 
+function safeText(str) {
+  return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
 function renderDiscoveredList(containerId) {
   const el = document.getElementById(containerId);
   if (!el || discoveredRdsList.length === 0) return;
@@ -187,8 +191,8 @@ function renderDiscoveredList(containerId) {
         </svg>
       </div>
       <div style="flex:1;">
-        <div style="font-size:13px; font-weight:500; color:#111;">${esc(rds.name || 'RDS')}</div>
-        <div style="font-size:11px; color:#888; font-family:monospace;">${esc(rds.host)}:${rds.port}</div>
+        <div style="font-size:13px; font-weight:500; color:#111;">${safeText(rds.name || 'RDS')}</div>
+        <div style="font-size:11px; color:#888; font-family:monospace;">${safeText(rds.host)}:${rds.port}</div>
       </div>
       <span class="badge badge-blue">mDNS</span>
     </div>
