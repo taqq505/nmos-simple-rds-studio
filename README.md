@@ -28,21 +28,27 @@ Start an IS-04 compliant registry directly from the app. Configure network inter
 ### 🔍 Real-time Visualization
 See everything registered in your NMOS network at a glance:
 
-- **Overview** — Node count, sender/receiver/flow totals, recent activity
+- **Overview** — Node count, sender/receiver/flow totals, receiver connection rate gauge, format distribution chart, live timeline, node REG/UNREG activity feed, sparkline history per metric
 - **Map** — Connection map showing sender/receiver links with hover highlighting
 - **Nodes** — Node → device → sender/receiver hierarchy; IS-05/07/08 API badges where advertised
 - **Senders** — SDP display, transport details, direct REST API access
 - **Receivers** — Connection status, linked sender navigation
-- **Flows / Sources** — Format summaries and source relationships
-- **Log** — Live log stream from the running RDS process
+- **Flows / Sources** — Format summaries and source relationships (ANC correctly detected)
+- **Log** — Live log stream from the running RDS process (local mode only)
 - **RDS Settings** — Network interface, ports, domain, priority, logging level
-- **App Settings** — Update mode (WebSocket or polling interval), poll interval
+- **App Settings** — Update mode (WebSocket or interval), poll interval, timeline window
 
 ### ⚡ WebSocket Updates
-By default the dashboard subscribes to the IS-04 Query API WebSocket feed and refreshes automatically when resources change. Falls back to interval polling if the RDS does not support WebSocket subscriptions.
+By default the dashboard subscribes to the IS-04 Query API WebSocket feed and refreshes automatically when resources change. Falls back to interval polling if the RDS does not support WebSocket subscriptions. Both modes are configurable in App Settings.
+
+### 🔔 Node Notifications
+When a node registers (REG) or deregisters (UNREG), a toast notification appears and the event is logged in the Overview activity feed and live timeline.
+
+### 🔎 Global Search
+Press `Ctrl+K` to open the search bar. Search by node name, hostname, IP address, sender/receiver label, flow format, or resource ID. Click a result to navigate directly to that resource.
 
 ### 🔗 Connect to Existing RDS (Monitor mode)
-Already have an RDS on your network? Connect to it as a read-only monitor without starting a new registry.
+Already have an RDS on your network? Connect to it as a read-only monitor without starting a new registry. The splash screen automatically discovers RDS instances on the local network via mDNS and lists them for one-click connection.
 
 ### 🌐 Open in Browser
 Each resource has an **Open in browser** button that opens the raw Query API response directly in your default browser.
@@ -148,16 +154,22 @@ NMOSネットワークの登録状況を一画面で把握できます：
 - **Nodes** — ノード → デバイス → センダー/レシーバーの階層表示、IS-05/07/08 APIバッジ表示
 - **Senders** — SDP表示、トランスポート詳細、REST APIへの直接アクセス
 - **Receivers** — 接続状態、接続先センダーへのナビゲーション
-- **Flows / Sources** — フォーマットサマリー、ソース関係
-- **Log** — 実行中のRDSプロセスからのライブログストリーム
+- **Flows / Sources** — フォーマットサマリー、ソース関係（ANC: video/smpte291 を正確に識別）
+- **Log** — 実行中のRDSプロセスからのライブログストリーム（ローカルモードのみ）
 - **RDS Settings** — ネットワークインターフェース、ポート、ドメイン、プライオリティ、ログレベル
-- **App Settings** — 更新モード（WebSocket / インターバルポーリング）、ポーリング間隔
+- **App Settings** — 更新モード（WebSocket / インターバル）、ポーリング間隔、タイムライン表示幅
 
 ### ⚡ WebSocket更新
-デフォルトでIS-04 Query APIのWebSocketフィードを購読し、リソースの変更を即時反映します。RDSがWebSocketサブスクリプションに対応していない場合は、インターバルポーリングに自動フォールバックします。
+デフォルトでIS-04 Query APIのWebSocketフィードを購読し、リソースの変更を即時反映します。RDSがWebSocketサブスクリプションに対応していない場合は、インターバルポーリングに自動フォールバックします。どちらもApp Settingsで設定可能です。
+
+### 🔔 ノード登録通知
+ノードの登録（REG）・登録解除（UNREG）をリアルタイムでトースト通知します。OverviewのNode Eventsフィードとライブタイムラインにも記録されます。
+
+### 🔎 グローバル検索
+`Ctrl+K` で検索バーを開き、ノード名・ホスト名・IPアドレス・センダー/レシーバー名・フォーマット・IDで横断検索できます。結果をクリックすると該当ページに直接遷移します。
 
 ### 🔗 既存RDSへの接続（Monitorモード）
-ネットワーク上に既存のRDSがある場合、新しいレジストリを起動せずに読み取り専用で接続・監視できます。
+ネットワーク上に既存のRDSがある場合、新しいレジストリを起動せずに読み取り専用で接続・監視できます。スプラッシュ画面でmDNSによりネットワーク上のRDSを自動検出し、ワンクリックで接続できます。
 
 ### 🌐 ブラウザで開く
 各リソースに **Open in browser** ボタンがあり、Query APIのレスポンスをブラウザで直接確認できます。

@@ -534,7 +534,7 @@ async function fetchLogEntries() {
         <circle cx="16" cy="21" r="1" fill="currentColor"/>
       </svg>
       <div class="state-info-title">Log not available for remote RDS</div>
-      <div class="state-info-body">ログはローカルRDSのみ対応しています。</div>
+      <div class="state-info-body">Log streaming is only available for locally running RDS.</div>
     </div>`;
   }
 }
