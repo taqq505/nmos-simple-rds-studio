@@ -169,7 +169,7 @@ function startMdnsBrowseDnsSd(dnsSdPath) {
 
 function resolveNmosService(dnsSdPath, instanceName) {
   // Try to extract IP/port from nmos-cpp naming convention: *_A-B-C-D_PORT
-  const nmosMatch = instanceName.match(/(\d+)-(\d+)-(\d+)-(\d+)_(\d+)$/);
+  const nmosMatch = instanceName.match(/(\d+)-(\d+)-(\d+)-(\d+)[_:](\d+)$/);
   if (nmosMatch) {
     const host = `${nmosMatch[1]}.${nmosMatch[2]}.${nmosMatch[3]}.${nmosMatch[4]}`;
     const port = parseInt(nmosMatch[5]);
