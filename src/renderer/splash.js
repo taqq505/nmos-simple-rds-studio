@@ -405,7 +405,7 @@ function showStep2b() {
       </div>
       <div class="form-group" style="flex:1; margin-bottom:0;">
         <div class="form-label">IP address</div>
-        <input class="form-input" type="text" id="inp-ip" placeholder="192.168.10.100" style="font-family:monospace;">
+        <input class="form-input" type="text" id="inp-ip" placeholder="10.57.21.10" style="font-family:monospace;">
       </div>
       <div class="form-group" style="width:80px; flex-shrink:0; margin-bottom:0;">
         <div class="form-label">Port <span class="form-hint">3211</span></div>
@@ -414,7 +414,7 @@ function showStep2b() {
     </div>
 
     <div style="font-size:10px; color:#888; font-family:monospace; background:#f9f9f9; border-radius:8px; padding:6px 10px; margin-bottom:8px; display:flex; justify-content:space-between;">
-      <span style="color:#bbb;">query</span><span id="preview-url">http://192.168.10.100:3211</span>
+      <span style="color:#bbb;">query</span><span id="preview-url">http://10.57.21.10:3211</span>
     </div>
 
     <div class="notice notice-amber" id="https-note" style="display:none;">
@@ -445,7 +445,7 @@ function showStep2b() {
 
 function updatePreview2b() {
   const proto   = document.getElementById('sel-proto').value;
-  const ip      = document.getElementById('inp-ip').value || '192.168.10.100';
+  const ip      = document.getElementById('inp-ip').value || '10.57.21.10';
   const qryPort = document.getElementById('inp-port').value || '3211';
   document.getElementById('preview-url').textContent = `${proto}://${ip}:${qryPort}`;
   document.getElementById('https-note').style.display = proto === 'https' ? 'flex' : 'none';

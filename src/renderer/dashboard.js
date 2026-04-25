@@ -579,7 +579,7 @@ async function renderNodes(el, isRefresh = false) {
   if (!isRefresh) {
     el.innerHTML = toolbar('Nodes',
       `<span class="count-badge" id="nodes-count">—</span>
-       <input class="search-input" id="node-search" placeholder="Search by name or IP..." value="${esc(nodeSearch)}">`) +
+       <input class="page-search-input" id="node-search" placeholder="Search by name or IP..." value="${esc(nodeSearch)}">`) +
       `<div class="page-content"><div id="nodes-body">${loadingHtml()}</div></div>`;
 
     el.querySelector('#node-search')?.addEventListener('input', e => {
@@ -753,7 +753,7 @@ async function renderSenders(el, isRefresh = false) {
     el.innerHTML = toolbar('Senders',
       `<span class="count-badge" id="senders-count">—</span>
        <div style="display:flex;gap:4px;" id="senders-filter">${filterBtns}</div>
-       <input class="search-input" id="sender-search" placeholder="Search..." value="${esc(senderSearch)}">`) +
+       <input class="page-search-input" id="sender-search" placeholder="Search..." value="${esc(senderSearch)}">`) +
       `<div class="page-content"><div id="senders-body">${loadingHtml()}</div></div>`;
 
     el.querySelectorAll('#senders-filter .filter-btn').forEach(btn => {
