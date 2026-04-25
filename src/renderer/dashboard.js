@@ -1620,15 +1620,15 @@ async function renderAppSettings(el) {
         </div>
       </div>
 
-      <div class="settings-section-title" style="margin-top:16px">ABOUT</div>
+      <div class="settings-buttons" style="margin-top:24px;">
+        <button class="btn-save-only" id="btn-app-save">Save</button>
+      </div>
+
+      <div class="settings-section-title" style="margin-top:24px">ABOUT</div>
       <div class="settings-about">
         <strong>NMOS Simple RDS Studio</strong> &nbsp; v${esc(version)}<br>
         RDS engine: nmos-cpp (<a href="#" onclick="return false">sony/nmos-cpp</a>)<br>
         License: Apache License 2.0
-      </div>
-
-      <div class="settings-buttons">
-        <button class="btn-save-only" id="btn-app-save">Save</button>
       </div>
       <div id="app-save-feedback" style="font-size:12px;color:var(--green-600);margin-top:8px;"></div>
     </div>
