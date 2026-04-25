@@ -351,10 +351,13 @@ async function renderOverview(el, isRefresh = false) {
 
   body.innerHTML = `
     <div class="metric-grid">
-      <div class="metric-card"><div class="metric-label">Nodes</div><div class="metric-value" id="mv-nodes">${nodes?.length ?? '—'}</div></div>
-      <div class="metric-card"><div class="metric-label">Senders</div><div class="metric-value" id="mv-senders">${senders?.length ?? '—'}</div></div>
-      <div class="metric-card"><div class="metric-label">Receivers</div><div class="metric-value" id="mv-receivers">${receivers?.length ?? '—'}</div></div>
-      <div class="metric-card"><div class="metric-label">Flows</div><div class="metric-value" id="mv-flows">${flows?.length ?? '—'}</div></div>
+      ${[['nodes','Nodes'],['senders','Senders'],['receivers','Receivers'],['flows','Flows']].map(([k,l]) => `
+        <div class="metric-card" style="position:relative;overflow:hidden;">
+          <div class="metric-label">${l}</div>
+          <div class="metric-value" id="mv-${k}">${(k==='nodes'?nodes:k==='senders'?senders:k==='receivers'?receivers:flows)?.length ?? '—'}</div>
+          <div id="spark-${k}" style="position:absolute;bottom:0;right:0;left:0;height:30px;pointer-events:none;"></div>
+        </div>
+      `).join('')}
     </div>
 
     <div class="ov-row">
@@ -381,17 +384,16 @@ async function renderOverview(el, isRefresh = false) {
       </div>
     </div>
 
-    <div class="ov-card" style="margin-bottom:10px;">
+    <div class="ov-card" style="margin-bottom:10px;padding:10px 14px 6px;">
       <div class="ov-card-title">LIVE TIMELINE</div>
-      <div class="timeline-wrap">
-        <div class="timeline-inner" id="ov-timeline">
-          ${activityLog.slice(0, 30).map(a => `
-            <div class="timeline-event">
-              <div class="timeline-dot" style="background:${a.type==='join'?'var(--green-600)':'var(--red-600)'};" title="${a.type==='join'?'joined':'left'}: ${esc(a.label)}"></div>
-              <div class="timeline-label">${esc(a.label)}</div>
-              <div class="timeline-time">${a.time}</div>
-            </div>
-          `).join('') || '<div style="font-size:11px;color:var(--text-tertiary);">No events yet</div>'}
+      <div style="position:relative;">
+        <div style="display:flex;justify-content:space-between;font-size:9px;font-family:monospace;color:var(--text-tertiary);padding:0 2px 2px;">
+          <span style="color:var(--green-600);font-weight:600;">← NOW</span>
+          <span>${appState.config?.timeline_window || 10} min ago →</span>
+        </div>
+        <div class="timeline-wrap" id="ov-timeline-wrap" style="position:relative;">
+          <div class="tl-shimmer-wrap"><div class="tl-shimmer-glow"></div></div>
+          <div class="timeline-rail" id="ov-timeline"></div>
         </div>
       </div>
     </div>
@@ -430,6 +432,7 @@ async function renderOverview(el, isRefresh = false) {
   `;
 
   renderActivityFeed();
+  renderTimeline(false);
   animateMetrics({ nodes: nodes?.length, senders: senders?.length, receivers: receivers?.length, flows: flows?.length });
   startRefresh(() => renderOverview(el, true));
 }
@@ -1684,6 +1687,12 @@ async function renderAppSettings(el) {
           <input class="s-input" id="s-poll-interval" type="number" value="${cfg.poll_interval||5}" style="width:60px" min="1" max="300"> <span style="font-size:12px;color:var(--text-secondary)">sec</span>
         </div>
       </div>
+      <div class="setting-row">
+        <div class="setting-info"><div class="setting-label">Timeline window</div><div class="setting-desc">History shown in Live Timeline</div></div>
+        <div class="setting-control" style="display:flex;gap:6px;align-items:center;">
+          <input class="s-input" id="s-timeline-window" type="number" value="${cfg.timeline_window||10}" style="width:60px" min="1" max="60"> <span style="font-size:12px;color:var(--text-secondary)">min</span>
+        </div>
+      </div>
 
       <div class="settings-buttons" style="margin-top:24px;">
         <button class="btn-save-only" id="btn-app-save">Save</button>
@@ -1703,7 +1712,8 @@ async function renderAppSettings(el) {
     const newCfg = {
       ...cfg,
       update_mode:   el.querySelector('input[name="s-update-mode"]:checked')?.value ?? (cfg.update_mode || 'websocket'),
-      poll_interval: parseInt(el.querySelector('#s-poll-interval')?.value) || cfg.poll_interval || 5,
+      poll_interval:     parseInt(el.querySelector('#s-poll-interval')?.value)     || cfg.poll_interval     || 5,
+      timeline_window:   parseInt(el.querySelector('#s-timeline-window')?.value)   || cfg.timeline_window   || 10,
     };
     appState.config = newCfg;
     await window.api.saveConfig(newCfg);
@@ -1722,9 +1732,60 @@ async function renderAppSettings(el) {
   });
 }
 
-// ─── Metric Counter Animation ─────────────────────────────────────────────────
+// ─── Metric Counter Animation + Sparkline History ────────────────────────────
 const prevMetrics = {};
+const getTimelineWindowMs = () => ((appState.config?.timeline_window || 10) * 60 * 1000);
+const metricsHistory = { nodes: [], senders: [], receivers: [], flows: [] };
+const sparklineColors = {
+  nodes:     '#185FA5',
+  senders:   '#3B6D11',
+  receivers: '#534AB7',
+  flows:     '#854F0B',
+};
+
+function recordMetrics(metrics) {
+  const now = Date.now();
+  const cutoff = now - getTimelineWindowMs();
+  for (const [key, val] of Object.entries(metrics)) {
+    if (val == null || !(key in metricsHistory)) continue;
+    metricsHistory[key].push({ t: now, v: val });
+    // Trim old entries
+    while (metricsHistory[key].length > 0 && metricsHistory[key][0].t < cutoff) {
+      metricsHistory[key].shift();
+    }
+  }
+}
+
+function sparklineSvg(key, w = 80, h = 30) {
+  const pts = metricsHistory[key];
+  const color = sparklineColors[key] || '#185FA5';
+  if (pts.length < 2) return '';
+  const now = Date.now();
+  const tMin = now - getTimelineWindowMs();
+  const vMin = Math.min(...pts.map(p => p.v));
+  const vMax = Math.max(...pts.map(p => p.v));
+  const vRange = vMax - vMin || 1;
+  const toX = t => ((t - tMin) / getTimelineWindowMs()) * w;
+  const toY = v => h - 2 - ((v - vMin) / vRange) * (h - 4);
+  const coords = pts.map(p => `${toX(p.t).toFixed(1)},${toY(p.v).toFixed(1)}`);
+  const lineD = `M ${coords.join(' L ')}`;
+  const areaD = `M ${toX(pts[0].t).toFixed(1)},${h} L ${coords.join(' L ')} L ${toX(pts[pts.length-1].t).toFixed(1)},${h} Z`;
+  const uid = `sg-${key}`;
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"
+    style="position:absolute;bottom:0;right:0;opacity:0.18;pointer-events:none;">
+    <defs>
+      <linearGradient id="${uid}" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="${color}"/>
+        <stop offset="100%" stop-color="${color}" stop-opacity="0"/>
+      </linearGradient>
+    </defs>
+    <path d="${areaD}" fill="url(#${uid})"/>
+    <path d="${lineD}" stroke="${color}" stroke-width="1.5" fill="none" stroke-linejoin="round"/>
+  </svg>`;
+}
+
 function animateMetrics(metrics) {
+  recordMetrics(metrics);
   for (const [key, newVal] of Object.entries(metrics)) {
     if (newVal == null) continue;
     const el = document.getElementById(`mv-${key}`);
@@ -1742,6 +1803,11 @@ function animateMetrics(metrics) {
     };
     requestAnimationFrame(step);
   }
+  // Re-render sparklines in-place without full re-render
+  for (const key of Object.keys(metricsHistory)) {
+    const card = document.getElementById(`spark-${key}`);
+    if (card) card.innerHTML = sparklineSvg(key, card.offsetWidth || 80, 30);
+  }
 }
 
 // ─── Activity Log & Node Watcher ─────────────────────────────────────────────
@@ -1752,25 +1818,113 @@ let previousNodeMap = null; // null = not initialized yet
 function addActivity(type, label) {
   const now = new Date();
   const time = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
-  activityLog.unshift({ type, label, time });
+  activityLog.unshift({ type, label, time, ts: Date.now() });
   if (activityLog.length > MAX_ACTIVITY) activityLog.pop();
-  renderActivityFeed();
+  const feed = document.getElementById('node-activity-feed');
+  if (feed) renderActivityFeed();
+  renderTimeline(true);
 }
 
 function renderActivityFeed() {
-  const el = document.getElementById('node-activity-feed');
-  if (!el) return;
-  if (!activityLog.length) {
-    el.innerHTML = '<div style="color:var(--text-tertiary);font-size:11px;padding:6px 0;">No events yet</div>';
+  const feed = document.getElementById('node-activity-feed');
+  if (feed) {
+    if (!activityLog.length) {
+      feed.innerHTML = '<div style="color:var(--text-tertiary);font-size:11px;padding:6px 0;">No events yet</div>';
+    } else {
+      feed.innerHTML = activityLog.slice(0, 30).map(a => `
+        <div style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:0.5px solid var(--border-default);">
+          <span style="font-size:13px;color:${a.type==='join'?'var(--green-600)':'var(--red-600)'};">${a.type==='join'?'REG':'UNREG'}</span>
+          <span style="flex:1;font-size:12px;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(a.label)}</span>
+          <span style="font-size:10px;font-family:monospace;color:var(--text-tertiary);flex-shrink:0;">${a.time}</span>
+        </div>
+      `).join('');
+    }
+  }
+  renderTimeline();
+}
+
+let tlUpdateInterval = null;
+
+function groupTimelineEvents(events, groupMs = 3000) {
+  const inWindow = events.filter(a => a.ts && (Date.now() - a.ts) <= getTimelineWindowMs());
+  const sorted = [...inWindow].sort((a, b) => b.ts - a.ts);
+  const groups = [];
+  for (const e of sorted) {
+    const last = groups[groups.length - 1];
+    if (last && Math.abs(e.ts - last.ts) <= groupMs) {
+      last.events.push(e);
+    } else {
+      groups.push({ ts: e.ts, events: [e] });
+    }
+  }
+  return groups;
+}
+
+function renderTimeline(isNew = false) {
+  const wrap = document.getElementById('ov-timeline-wrap');
+  const rail = document.getElementById('ov-timeline');
+  if (!rail || !wrap) return;
+
+  const groups = groupTimelineEvents(activityLog);
+  const W = wrap.offsetWidth || 600;
+  const now = Date.now();
+
+  if (!groups.length) {
+    rail.innerHTML = '<div style="font-size:11px;color:var(--text-tertiary);position:absolute;top:32px;left:12px;">Waiting for events…</div>';
     return;
   }
-  el.innerHTML = activityLog.slice(0, 30).map(a => `
-    <div style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:0.5px solid var(--border-default);">
-      <span style="font-size:13px;color:${a.type==='join'?'var(--green-600)':'var(--red-600)'};">${a.type==='join'?'↑':'↓'}</span>
-      <span style="flex:1;font-size:12px;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(a.label)}</span>
-      <span style="font-size:10px;font-family:monospace;color:var(--text-tertiary);flex-shrink:0;">${a.time}</span>
-    </div>
-  `).join('');
+
+  rail.innerHTML = '';
+
+  // Remove old tooltip
+  const oldTip = document.getElementById('tl-tooltip');
+  if (oldTip) oldTip.remove();
+
+  // Tooltip element
+  const tip = document.createElement('div');
+  tip.id = 'tl-tooltip';
+  tip.style.cssText = 'position:absolute;z-index:100;background:#222;color:#fff;font-size:10px;border-radius:6px;padding:5px 8px;pointer-events:none;display:none;white-space:nowrap;line-height:1.6;transform:translateX(-50%);bottom:100%;margin-bottom:6px;';
+  rail.appendChild(tip);
+
+  groups.forEach((g, i) => {
+    const age = now - g.ts;
+    const xPct = (age / getTimelineWindowMs()) * 100;
+    if (xPct < 0 || xPct > 100) return;
+
+    const hasJoin  = g.events.some(e => e.type === 'join');
+    const hasLeave = g.events.some(e => e.type === 'leave');
+    const dotColor = hasJoin && hasLeave ? '#854F0B' : hasJoin ? 'var(--green-600)' : 'var(--red-600)';
+    const typeLabel = hasJoin && hasLeave ? 'MIX' : hasJoin ? 'REG' : 'UNREG';
+    const count = g.events.length;
+
+    const el = document.createElement('div');
+    el.style.cssText = `position:absolute;left:${xPct}%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;padding-top:2px;cursor:default;`;
+    el.innerHTML = `
+      <div style="font-size:9px;font-weight:600;color:${dotColor};height:14px;line-height:14px;">${typeLabel}</div>
+      <div class="timeline-dot${i===0&&isNew?' new':''}" style="background:${dotColor};"></div>
+      ${count > 1 ? `<div style="font-size:9px;font-weight:600;color:${dotColor};margin-top:3px;">×${count}</div>` : '<div style="height:14px;"></div>'}
+    `;
+
+    el.addEventListener('mouseenter', () => {
+      const lines = g.events.map(e =>
+        `${e.type==='join'?'REG':'UNREG'} ${e.label}  <span style="color:#aaa;font-family:monospace;">${e.time}</span>`
+      ).join('<br>');
+      tip.innerHTML = lines;
+      tip.style.left = `${xPct}%`;
+      tip.style.display = 'block';
+    });
+    el.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
+
+    rail.appendChild(el);
+  });
+
+  // Start periodic position update if not already running
+  if (!tlUpdateInterval) {
+    tlUpdateInterval = setInterval(() => {
+      if (document.getElementById('ov-timeline')) renderTimeline(false);
+      else { clearInterval(tlUpdateInterval); tlUpdateInterval = null; }
+    }, 20000);
+  }
 }
 
 async function watchNodes() {
@@ -1789,13 +1943,13 @@ async function watchNodes() {
   for (const [id, label] of newMap) {
     if (!previousNodeMap.has(id)) {
       addActivity('join', label);
-      showToast(`↑ ${label} joined`, 'join');
+      showToast(`↑ ${label} REG`, 'join');
     }
   }
   for (const [id, label] of previousNodeMap) {
     if (!newMap.has(id)) {
       addActivity('leave', label);
-      showToast(`↓ ${label} left`, 'leave');
+      showToast(`↓ ${label} UNREG`, 'leave');
     }
   }
 

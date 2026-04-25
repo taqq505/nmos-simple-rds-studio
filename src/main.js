@@ -27,6 +27,7 @@ const DEFAULT_CONFIG = {
   access_log: 'rds_access.log',
   update_mode: 'websocket',
   poll_interval: 5,
+  timeline_window: 10,
 };
 
 function loadConfig() {
