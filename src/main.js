@@ -156,7 +156,7 @@ function startMdnsBrowse() {
 }
 
 function startMdnsBrowseDnsSd(dnsSdPath) {
-  mdnsBrowser = spawn(dnsSdPath, ['-B', '_nmos-registration._tcp', 'local.']);
+  mdnsBrowser = spawn(dnsSdPath, ['-B', '_nmos-query._tcp', 'local.']);
   mdnsBrowser.stdout.on('data', (data) => {
     for (const line of data.toString().split('\n')) {
       const m = line.match(/\s+Add\s+\d+\s+\d+\s+\S+\s+\S+\s+(.+)/);
@@ -178,7 +178,7 @@ function resolveNmosService(dnsSdPath, instanceName) {
   }
 
   // Fallback: dns-sd -L lookup
-  const resolver = spawn(dnsSdPath, ['-L', instanceName, '_nmos-registration._tcp', 'local.']);
+  const resolver = spawn(dnsSdPath, ['-L', instanceName, '_nmos-query._tcp', 'local.']);
   let done = false;
   resolver.stdout.on('data', (data) => {
     if (done) return;
@@ -201,7 +201,7 @@ function resolveNmosService(dnsSdPath, instanceName) {
 function startMdnsBrowseJs() {
   try {
     bonjourInst = new Bonjour();
-    const browser = bonjourInst.find({ type: 'nmos-registration' }, (service) => {
+    const browser = bonjourInst.find({ type: 'nmos-query' }, (service) => {
       if (splashWindow) splashWindow.webContents.send('mdns:discovered', {
         name: service.name,
         host: service.referer?.address || service.host,
