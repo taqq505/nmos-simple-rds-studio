@@ -221,7 +221,7 @@ function esc(str) {
 
 function mediaLabel(format) {
   if (!format) return null;
-  if (format.includes('video/smpte291m')) return 'ANC';
+  if (format.includes('video/smpte291')) return 'ANC';
   if (format.includes('video')) return 'Video';
   if (format.includes('audio')) return 'Audio';
   if (format.includes('data'))  return 'ANC';
@@ -1212,9 +1212,9 @@ function rebuildFlowsList() {
 
   let filtered = data.filter(item => {
     const mt = item.media_type || item.format || '';
-    if (flowsFilter === 'video') return mt.includes('video') && !mt.includes('smpte291m');
+    if (flowsFilter === 'video') return mt.includes('video') && !mt.includes('smpte291');
     if (flowsFilter === 'audio') return mt.includes('audio');
-    if (flowsFilter === 'anc')   return mt.includes('smpte291m');
+    if (flowsFilter === 'anc')   return mt.includes('smpte291');
     return true;
   });
 
