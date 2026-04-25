@@ -1682,7 +1682,7 @@ function searchResources(query) {
     (r.description||'').toLowerCase().includes(q) ||
     (r.hostname||'').toLowerCase().includes(q) ||
     (r.id||'').toLowerCase().startsWith(q) ||
-    (r.interfaces||[]).some(i => (i.ip||'').includes(q)) ||
+    (r.api?.endpoints||[]).some(e => (e.host||'').includes(q)) ||
     (r.format||'').toLowerCase().includes(q) ||
     (r.transport||'').toLowerCase().includes(q);
 
