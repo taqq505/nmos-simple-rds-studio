@@ -208,10 +208,32 @@
     .filter-label { font-size: 11px; color: var(--text-tertiary); }
 
     /* ── Metric Cards ── */
-    .metric-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 8px; margin-bottom: 14px; }
+    .metric-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 8px; margin-bottom: 12px; }
     .metric-card { background: var(--bg-secondary); border: 0.5px solid var(--border-default); border-radius: 8px; padding: 10px 14px; }
     .metric-label { font-size: 11px; color: var(--text-secondary); margin-bottom: 4px; }
     .metric-value { font-size: 22px; font-weight: 500; color: var(--text-primary); }
+
+    /* ── Overview Monitoring ── */
+    .ov-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+    .ov-card { background: var(--bg-secondary); border: 0.5px solid var(--border-default); border-radius: 8px; padding: 10px 14px; }
+    .ov-card-title { font-size: 10px; font-weight: 600; color: var(--text-tertiary); letter-spacing: 0.06em; margin-bottom: 8px; }
+    .gauge-bar-bg { background: var(--border-default); border-radius: 99px; height: 8px; width: 100%; overflow: hidden; }
+    .gauge-bar-fill { height: 100%; border-radius: 99px; transition: width 0.6s ease; }
+    .gauge-pct { font-size: 22px; font-weight: 500; color: var(--text-primary); }
+    .gauge-sub { font-size: 11px; color: var(--text-secondary); margin-top: 2px; margin-bottom: 8px; }
+    .fmt-bar { display: flex; height: 8px; border-radius: 99px; overflow: hidden; gap: 1px; }
+    .fmt-bar-seg { transition: flex 0.6s ease; }
+    .fmt-legend { display: flex; gap: 10px; margin-top: 6px; }
+    .fmt-legend-item { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-secondary); }
+    .fmt-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+    .timeline-wrap { overflow-x: auto; white-space: nowrap; padding: 6px 0 8px; }
+    .timeline-inner { display: inline-flex; flex-direction: row-reverse; gap: 10px; min-width: 100%; padding: 0 4px; }
+    .timeline-event { display: inline-flex; flex-direction: column; align-items: center; gap: 3px; }
+    .timeline-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .timeline-label { font-size: 9px; color: var(--text-tertiary); white-space: nowrap; max-width: 70px; overflow: hidden; text-overflow: ellipsis; }
+    .timeline-time { font-size: 9px; font-family: monospace; color: var(--text-tertiary); }
+    @keyframes led-blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+    .led-dot { width:7px; height:7px; border-radius:50%; background:var(--green-600); animation: led-blink 2s ease-in-out infinite; display:inline-block; flex-shrink:0; }
 
     /* ── Section Title ── */
     .section-title { font-size: 12px; font-weight: 500; color: var(--text-secondary); margin-bottom: 6px; }

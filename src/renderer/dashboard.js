@@ -329,54 +329,100 @@ async function renderOverview(el, isRefresh = false) {
   if (!body) return;
 
   const devMap = {};
+  let devices = [];
   if (nodes) {
-    const devices = await apiFetch(`${appState.queryBase}${QUERY_PATH}/devices`);
-    (devices || []).forEach(d => { devMap[d.node_id] = (devMap[d.node_id] || 0) + 1; });
+    devices = await apiFetch(`${appState.queryBase}${QUERY_PATH}/devices`) || [];
+    devices.forEach(d => { devMap[d.node_id] = (devMap[d.node_id] || 0) + 1; });
   }
 
   const recentLog = await apiFetch(`${appState.regBase}/log/events`);
   const recentLines = (recentLog || []).slice(-8).reverse();
 
+  // Stats
+  const connectedRcv = (receivers||[]).filter(r => r.subscription?.active && r.subscription?.sender_id).length;
+  const totalRcv = (receivers||[]).length;
+  const connPct = totalRcv ? Math.round(connectedRcv / totalRcv * 100) : 0;
+  const connColor = connPct >= 80 ? 'var(--green-600)' : connPct >= 40 ? 'var(--amber-600)' : 'var(--red-600)';
+
+  const fVideo = (flows||[]).filter(f => (f.format||'').includes('video') && !(f.media_type||'').includes('smpte291')).length;
+  const fAudio = (flows||[]).filter(f => (f.format||'').includes('audio')).length;
+  const fAnc   = (flows||[]).filter(f => (f.media_type||'').includes('smpte291') || (f.format||'').includes('data')).length;
+  const fTotal = fVideo + fAudio + fAnc || 1;
+
   body.innerHTML = `
     <div class="metric-grid">
-      <div class="metric-card"><div class="metric-label">Nodes</div><div class="metric-value">${nodes?.length ?? '—'}</div></div>
-      <div class="metric-card"><div class="metric-label">Senders</div><div class="metric-value">${senders?.length ?? '—'}</div></div>
-      <div class="metric-card"><div class="metric-label">Receivers</div><div class="metric-value">${receivers?.length ?? '—'}</div></div>
-      <div class="metric-card"><div class="metric-label">Flows</div><div class="metric-value">${flows?.length ?? '—'}</div></div>
+      <div class="metric-card"><div class="metric-label">Nodes</div><div class="metric-value" id="mv-nodes">${nodes?.length ?? '—'}</div></div>
+      <div class="metric-card"><div class="metric-label">Senders</div><div class="metric-value" id="mv-senders">${senders?.length ?? '—'}</div></div>
+      <div class="metric-card"><div class="metric-label">Receivers</div><div class="metric-value" id="mv-receivers">${receivers?.length ?? '—'}</div></div>
+      <div class="metric-card"><div class="metric-label">Flows</div><div class="metric-value" id="mv-flows">${flows?.length ?? '—'}</div></div>
+    </div>
+
+    <div class="ov-row">
+      <div class="ov-card">
+        <div class="ov-card-title">RECEIVER CONNECTION RATE</div>
+        <div class="gauge-pct" id="gauge-pct">${connPct}%</div>
+        <div class="gauge-sub">${connectedRcv} / ${totalRcv} connected</div>
+        <div class="gauge-bar-bg">
+          <div class="gauge-bar-fill" id="gauge-fill" style="width:${connPct}%;background:${connColor};"></div>
+        </div>
+      </div>
+      <div class="ov-card">
+        <div class="ov-card-title">FLOW FORMAT DISTRIBUTION</div>
+        <div class="fmt-bar">
+          <div class="fmt-bar-seg" style="flex:${fVideo};background:#185FA5;" title="Video"></div>
+          <div class="fmt-bar-seg" style="flex:${fAudio};background:#3B6D11;" title="Audio"></div>
+          <div class="fmt-bar-seg" style="flex:${fAnc};background:#854F0B;" title="ANC"></div>
+        </div>
+        <div class="fmt-legend">
+          <div class="fmt-legend-item"><div class="fmt-dot" style="background:#185FA5;"></div>Video ${fVideo}</div>
+          <div class="fmt-legend-item"><div class="fmt-dot" style="background:#3B6D11;"></div>Audio ${fAudio}</div>
+          <div class="fmt-legend-item"><div class="fmt-dot" style="background:#854F0B;"></div>ANC ${fAnc}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="ov-card" style="margin-bottom:10px;">
+      <div class="ov-card-title">LIVE TIMELINE</div>
+      <div class="timeline-wrap">
+        <div class="timeline-inner" id="ov-timeline">
+          ${activityLog.slice(0, 30).map(a => `
+            <div class="timeline-event">
+              <div class="timeline-dot" style="background:${a.type==='join'?'var(--green-600)':'var(--red-600)'};" title="${a.type==='join'?'joined':'left'}: ${esc(a.label)}"></div>
+              <div class="timeline-label">${esc(a.label)}</div>
+              <div class="timeline-time">${a.time}</div>
+            </div>
+          `).join('') || '<div style="font-size:11px;color:var(--text-tertiary);">No events yet</div>'}
+        </div>
+      </div>
     </div>
 
     <div class="section-title">Registered nodes</div>
     ${nodes && nodes.length ? `
     <table class="data-table">
-      <thead><tr><th>Node name</th><th>IP address</th><th>Devices</th></tr></thead>
-      <tbody>${nodes.map(n => {
-        return `<tr>
-          <td>${esc(nodeLabel(n))}</td>
-          <td><span style="font-family:monospace;font-size:12px;color:var(--text-mono)">${esc(nodeIp(n))}</span></td>
-          <td>${devMap[n.id] || 0}</td>
-        </tr>`;
-      }).join('')}</tbody>
+      <thead><tr><th></th><th>Node name</th><th>IP address</th><th>Devices</th></tr></thead>
+      <tbody>${nodes.map(n => `<tr>
+        <td style="width:16px;"><span class="led-dot"></span></td>
+        <td>${esc(nodeLabel(n))}</td>
+        <td><span style="font-family:monospace;font-size:12px;color:var(--text-mono)">${esc(nodeIp(n))}</span></td>
+        <td>${devMap[n.id] || 0}</td>
+      </tr>`).join('')}</tbody>
     </table>` : emptyHtml('No nodes registered')}
 
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:4px;">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px;">
       <div class="activity-box">
-        <div class="activity-header">
-          <span class="live-dot"></span>Node events
-        </div>
+        <div class="activity-header"><span class="live-dot"></span>Node events</div>
         <div id="node-activity-feed" style="padding:4px 12px 8px;">
           <div style="color:var(--text-tertiary);font-size:11px;padding:6px 0;">No events yet</div>
         </div>
       </div>
       <div class="activity-box">
-        <div class="activity-header">
-          <span class="live-dot"></span>Recent activity
-        </div>
+        <div class="activity-header"><span class="live-dot"></span>Recent activity</div>
         <div class="activity-body">
           ${recentLines.length ? recentLines.map(e => {
-            const ts = (e.timestamp || '').substring(11, 19);
+            const ts = (e.timestamp||'').substring(11,19);
             const lv = levelName(e.level);
-            const cls = lv === 'error' || lv === 'fatal' ? 'act-error' : lv === 'warning' ? 'act-warn' : 'act-info';
-            return `<div class="activity-line ${cls}">[${esc(ts)}] ${esc(lv.toUpperCase().padEnd(4))} ${esc(e.message || '')}</div>`;
+            const cls = lv==='error'||lv==='fatal' ? 'act-error' : lv==='warning' ? 'act-warn' : 'act-info';
+            return `<div class="activity-line ${cls}">[${esc(ts)}] ${esc(lv.toUpperCase().padEnd(4))} ${esc(e.message||'')}</div>`;
           }).join('') : '<div class="activity-line act-info" style="color:#bbb">No recent activity</div>'}
         </div>
       </div>
@@ -384,6 +430,7 @@ async function renderOverview(el, isRefresh = false) {
   `;
 
   renderActivityFeed();
+  animateMetrics({ nodes: nodes?.length, senders: senders?.length, receivers: receivers?.length, flows: flows?.length });
   startRefresh(() => renderOverview(el, true));
 }
 
@@ -1673,6 +1720,28 @@ async function renderAppSettings(el) {
     const fb = el.querySelector('#app-save-feedback');
     if (fb) { fb.textContent = '✓ Saved'; setTimeout(() => fb.textContent = '', 2000); }
   });
+}
+
+// ─── Metric Counter Animation ─────────────────────────────────────────────────
+const prevMetrics = {};
+function animateMetrics(metrics) {
+  for (const [key, newVal] of Object.entries(metrics)) {
+    if (newVal == null) continue;
+    const el = document.getElementById(`mv-${key}`);
+    if (!el) continue;
+    const oldVal = prevMetrics[key] ?? newVal;
+    prevMetrics[key] = newVal;
+    if (oldVal === newVal) { el.textContent = newVal; continue; }
+    const start = Date.now();
+    const diff = newVal - oldVal;
+    const step = () => {
+      const p = Math.min((Date.now() - start) / 600, 1);
+      const e = 1 - Math.pow(1 - p, 3);
+      el.textContent = Math.round(oldVal + diff * e);
+      if (p < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }
 }
 
 // ─── Activity Log & Node Watcher ─────────────────────────────────────────────
