@@ -66,6 +66,7 @@ async function init() {
     initWebSocket();
   }
 
+  watchNodes();
   navigateTo('overview');
 }
 
@@ -134,7 +135,7 @@ function startRefresh(fn, ms) {
   if (!ms && cfg.update_mode === 'websocket' && !wsUnsupported) {
     resetWsWatchdog();
   } else {
-    refreshTimer = setInterval(() => { fn(); markLastUpdated(); }, ms || pollMs);
+    refreshTimer = setInterval(() => { fn(); markLastUpdated(); watchNodes(); }, ms || pollMs);
   }
 }
 function stopRefresh() {
@@ -186,7 +187,8 @@ function onWsMessage() {
   resetWsWatchdog();
   if (currentRefreshFn) currentRefreshFn();
   markLastUpdated();
-  showToast('Updated');
+  watchNodes();
+  showToast('Updated', 'info', 1500);
 }
 
 function markLastUpdated() {
@@ -274,11 +276,15 @@ function toolbar(title, rightHtml = '') {
 }
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
-function showToast(msg, ms = 2000) {
+function showToast(msg, type = 'info', ms = 3000) {
   const t = document.getElementById('toast');
   t.textContent = msg;
+  t.style.background =
+    type === 'join'  ? 'var(--green-600,#3B6D11)' :
+    type === 'leave' ? 'var(--red-600,#A32D2D)'   : '#333';
   t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), ms);
+  clearTimeout(t._tid);
+  t._tid = setTimeout(() => t.classList.remove('show'), ms);
 }
 
 // ─── JSON Modal ───────────────────────────────────────────────────────────────
@@ -352,21 +358,32 @@ async function renderOverview(el, isRefresh = false) {
       }).join('')}</tbody>
     </table>` : emptyHtml('No nodes registered')}
 
-    <div class="activity-box">
-      <div class="activity-header">
-        <span class="live-dot"></span>Recent activity
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:4px;">
+      <div class="activity-box">
+        <div class="activity-header">
+          <span class="live-dot"></span>Node events
+        </div>
+        <div id="node-activity-feed" style="padding:4px 12px 8px;">
+          <div style="color:var(--text-tertiary);font-size:11px;padding:6px 0;">No events yet</div>
+        </div>
       </div>
-      <div class="activity-body">
-        ${recentLines.length ? recentLines.map(e => {
-          const ts = (e.timestamp || '').substring(11, 19);
-          const lv = levelName(e.level);
-          const cls = lv === 'error' || lv === 'fatal' ? 'act-error' : lv === 'warning' ? 'act-warn' : 'act-info';
-          return `<div class="activity-line ${cls}">[${esc(ts)}] ${esc(lv.toUpperCase().padEnd(4))} ${esc(e.message || '')}</div>`;
-        }).join('') : '<div class="activity-line act-info" style="color:#bbb">No recent activity</div>'}
+      <div class="activity-box">
+        <div class="activity-header">
+          <span class="live-dot"></span>Recent activity
+        </div>
+        <div class="activity-body">
+          ${recentLines.length ? recentLines.map(e => {
+            const ts = (e.timestamp || '').substring(11, 19);
+            const lv = levelName(e.level);
+            const cls = lv === 'error' || lv === 'fatal' ? 'act-error' : lv === 'warning' ? 'act-warn' : 'act-info';
+            return `<div class="activity-line ${cls}">[${esc(ts)}] ${esc(lv.toUpperCase().padEnd(4))} ${esc(e.message || '')}</div>`;
+          }).join('') : '<div class="activity-line act-info" style="color:#bbb">No recent activity</div>'}
+        </div>
       </div>
     </div>
   `;
 
+  renderActivityFeed();
   startRefresh(() => renderOverview(el, true));
 }
 
@@ -1656,6 +1673,64 @@ async function renderAppSettings(el) {
     const fb = el.querySelector('#app-save-feedback');
     if (fb) { fb.textContent = '✓ Saved'; setTimeout(() => fb.textContent = '', 2000); }
   });
+}
+
+// ─── Activity Log & Node Watcher ─────────────────────────────────────────────
+const activityLog = [];
+const MAX_ACTIVITY = 100;
+let previousNodeMap = null; // null = not initialized yet
+
+function addActivity(type, label) {
+  const now = new Date();
+  const time = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
+  activityLog.unshift({ type, label, time });
+  if (activityLog.length > MAX_ACTIVITY) activityLog.pop();
+  renderActivityFeed();
+}
+
+function renderActivityFeed() {
+  const el = document.getElementById('node-activity-feed');
+  if (!el) return;
+  if (!activityLog.length) {
+    el.innerHTML = '<div style="color:var(--text-tertiary);font-size:11px;padding:6px 0;">No events yet</div>';
+    return;
+  }
+  el.innerHTML = activityLog.slice(0, 30).map(a => `
+    <div style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:0.5px solid var(--border-default);">
+      <span style="font-size:13px;color:${a.type==='join'?'var(--green-600)':'var(--red-600)'};">${a.type==='join'?'↑':'↓'}</span>
+      <span style="flex:1;font-size:12px;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(a.label)}</span>
+      <span style="font-size:10px;font-family:monospace;color:var(--text-tertiary);flex-shrink:0;">${a.time}</span>
+    </div>
+  `).join('');
+}
+
+async function watchNodes() {
+  const res = await window.api.fetch(`${appState.queryBase}${QUERY_PATH}/nodes`, { readBody: true });
+  if (!res.ok) return;
+  let nodes;
+  try { nodes = JSON.parse(res.text); } catch { return; }
+
+  const newMap = new Map(nodes.map(n => [n.id, nodeLabel(n)]));
+
+  if (previousNodeMap === null) {
+    previousNodeMap = newMap;
+    return;
+  }
+
+  for (const [id, label] of newMap) {
+    if (!previousNodeMap.has(id)) {
+      addActivity('join', label);
+      showToast(`↑ ${label} joined`, 'join');
+    }
+  }
+  for (const [id, label] of previousNodeMap) {
+    if (!newMap.has(id)) {
+      addActivity('leave', label);
+      showToast(`↓ ${label} left`, 'leave');
+    }
+  }
+
+  previousNodeMap = newMap;
 }
 
 // ─── Global Search ────────────────────────────────────────────────────────────
