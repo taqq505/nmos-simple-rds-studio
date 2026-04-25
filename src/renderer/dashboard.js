@@ -60,6 +60,7 @@ async function init() {
   updateStatusBar();
   startUptimeClock();
   setupNav();
+  setupSearch();
 
   if (cfg.update_mode === 'websocket') {
     initWebSocket();
@@ -1654,6 +1655,106 @@ async function renderAppSettings(el) {
 
     const fb = el.querySelector('#app-save-feedback');
     if (fb) { fb.textContent = '✓ Saved'; setTimeout(() => fb.textContent = '', 2000); }
+  });
+}
+
+// ─── Global Search ────────────────────────────────────────────────────────────
+let searchCache = null;
+
+async function fetchSearchCache() {
+  const base = appState.queryBase + QUERY_PATH;
+  const [nodes, devices, senders, receivers, flows, sources] = await Promise.all([
+    window.api.fetch(`${base}/nodes`,     { readBody: true }).then(r => r.ok ? JSON.parse(r.text) : []),
+    window.api.fetch(`${base}/devices`,   { readBody: true }).then(r => r.ok ? JSON.parse(r.text) : []),
+    window.api.fetch(`${base}/senders`,   { readBody: true }).then(r => r.ok ? JSON.parse(r.text) : []),
+    window.api.fetch(`${base}/receivers`, { readBody: true }).then(r => r.ok ? JSON.parse(r.text) : []),
+    window.api.fetch(`${base}/flows`,     { readBody: true }).then(r => r.ok ? JSON.parse(r.text) : []),
+    window.api.fetch(`${base}/sources`,   { readBody: true }).then(r => r.ok ? JSON.parse(r.text) : []),
+  ]);
+  searchCache = { nodes, devices, senders, receivers, flows, sources };
+}
+
+function searchResources(query) {
+  if (!searchCache || !query) return [];
+  const q = query.toLowerCase();
+  const match = (r) =>
+    (r.label||'').toLowerCase().includes(q) ||
+    (r.description||'').toLowerCase().includes(q) ||
+    (r.hostname||'').toLowerCase().includes(q) ||
+    (r.id||'').toLowerCase().startsWith(q) ||
+    (r.interfaces||[]).some(i => (i.ip||'').includes(q)) ||
+    (r.format||'').toLowerCase().includes(q) ||
+    (r.transport||'').toLowerCase().includes(q);
+
+  const results = [];
+  const add = (type, page, icon, items) => {
+    const matched = items.filter(match);
+    if (matched.length) results.push({ type, page, icon, items: matched.slice(0, 5) });
+  };
+  add('Nodes',     'nodes',     '●', searchCache.nodes);
+  add('Senders',   'senders',   '●', searchCache.senders);
+  add('Receivers', 'receivers', '●', searchCache.receivers);
+  add('Flows',     'flows',     '●', searchCache.flows);
+  add('Sources',   'flows',     '●', searchCache.sources);
+  return results;
+}
+
+function renderSearchResults(results, query) {
+  const dd = document.getElementById('search-dropdown');
+  if (!dd) return;
+  if (!query) { dd.classList.remove('open'); return; }
+  if (!results.length) {
+    dd.innerHTML = `<div class="search-empty">No results for "${esc(query)}"</div>`;
+    dd.classList.add('open');
+    return;
+  }
+  const colors = { Nodes: '#185FA5', Senders: '#3B6D11', Receivers: '#534AB7', Flows: '#854F0B', Sources: '#854F0B' };
+  dd.innerHTML = results.map(group => `
+    <div class="search-group-label">${esc(group.type)}</div>
+    ${group.items.map(r => `
+      <div class="search-item" data-page="${esc(group.page)}" data-id="${esc(r.id)}">
+        <span style="width:7px;height:7px;border-radius:50%;background:${colors[group.type]||'#999'};flex-shrink:0;display:inline-block;"></span>
+        <span class="search-item-label">${esc(r.label?.trim() || r.hostname || r.id?.substring(0,16))}</span>
+        <span class="search-item-sub">${esc(r.id?.substring(0,8))}…</span>
+      </div>
+    `).join('')}
+  `).join('');
+  dd.classList.add('open');
+
+  dd.querySelectorAll('.search-item').forEach(el => {
+    el.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      const page = el.dataset.page;
+      const id   = el.dataset.id;
+      document.getElementById('global-search').value = '';
+      dd.classList.remove('open');
+      navigateTo(page);
+      // Highlight after render
+      setTimeout(() => {
+        const card = document.querySelector(`[data-sender-id="${id}"],[data-recv-id="${id}"],[data-node-id="${id}"]`);
+        if (card) { card.scrollIntoView({ behavior: 'smooth', block: 'center' }); card.classList.add('highlighted'); }
+      }, 300);
+    });
+  });
+}
+
+function setupSearch() {
+  const input = document.getElementById('global-search');
+  const dd    = document.getElementById('search-dropdown');
+  if (!input) return;
+
+  let debounce = null;
+  input.addEventListener('focus', () => { searchCache = null; fetchSearchCache(); });
+  input.addEventListener('input', () => {
+    clearTimeout(debounce);
+    debounce = setTimeout(async () => {
+      if (!searchCache) await fetchSearchCache();
+      renderSearchResults(searchResources(input.value.trim()), input.value.trim());
+    }, 200);
+  });
+  input.addEventListener('blur', () => setTimeout(() => dd?.classList.remove('open'), 150));
+  document.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); input.focus(); input.select(); }
   });
 }
 
