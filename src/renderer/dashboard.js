@@ -248,6 +248,21 @@ function errorHtml(msg) {
   return `<div class="state-box state-error">${esc(msg)}</div>`;
 }
 
+function versionToStr(ver) {
+  if (!ver) return '—';
+  const [secs] = ver.split(':');
+  const d = new Date((parseInt(secs) - 37) * 1000);
+  if (isNaN(d)) return ver;
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+function versionBadge(r) {
+  return r.version
+    ? `<span style="font-size:10px;color:var(--text-tertiary);font-family:monospace;">Updated: ${versionToStr(r.version)}</span>`
+    : '';
+}
+
 function nodeLabel(n) {
   return n.label?.trim() || n.hostname || n.id?.substring(0, 8) || '—';
 }
@@ -718,6 +733,7 @@ function rebuildNodeList() {
         <div style="font-size:10px;color:var(--text-tertiary);letter-spacing:0.04em;margin:10px 0 6px">DEVICES</div>
         ${devs.map(dev => buildDeviceCard(dev, sndByDev[dev.id]||[], rcvByDev[dev.id]||[], openDevIds, n)).join('')}
         <div class="btn-row" style="margin-top:8px">
+          ${versionBadge(n)}
           <button class="btn-sm" onclick="showJsonModal('Node: ${esc(nodeLabel(n))}', window._nodesData.nodes.find(x=>x.id==='${esc(n.id)}'))">View raw JSON</button>
           <button class="btn-sm" onclick="window.api.openExternal('${appState.queryBase}/x-nmos/query/v1.3/nodes/${esc(n.id)}')">Open in browser</button>
         </div>
@@ -920,6 +936,7 @@ function rebuildSenderList() {
           ? `<div class="sdp-loading"><div class="spinner spinner-sm"></div>Loading SDP…</div>`
           : emptyHtml('No manifest_href')}</div>
         <div class="btn-row" style="margin-top:8px">
+          ${versionBadge(s)}
           <button class="btn-sm" onclick="showJsonModal('Sender: ${esc(resourceLabel(s))}', window._sendersData.senders.find(x=>x.id==='${esc(s.id)}'))">View raw JSON</button>
           <button class="btn-sm" onclick="window.api.openExternal('${appState.queryBase}/x-nmos/query/v1.3/senders/${esc(s.id)}')">Open in browser</button>
         </div>
@@ -1166,6 +1183,7 @@ function rebuildReceiverList() {
         </div>
         <div class="btn-row">
           ${connected ? `<button class="btn-sm green" onclick="navToSenderFromReceiver('${esc(r.subscription.sender_id)}')">Go to Sender →</button>` : ''}
+          ${versionBadge(r)}
           <button class="btn-sm" onclick="showJsonModal('Receiver: ${esc(resourceLabel(r))}', window._receiversData.receivers.find(x=>x.id==='${esc(r.id)}'))">View raw JSON</button>
           <button class="btn-sm" onclick="window.api.openExternal('${appState.queryBase}/x-nmos/query/v1.3/receivers/${esc(r.id)}')">Open in browser</button>
         </div>
@@ -1289,13 +1307,14 @@ function rebuildFlowsList() {
   if (!filtered.length) { body.innerHTML = emptyHtml(`No ${flowsTab} match filter`); return; }
 
   body.innerHTML = `<table class="data-table">
-    <thead><tr><th>Label</th><th>Format</th><th>Summary</th><th>ID</th></tr></thead>
+    <thead><tr><th>Label</th><th>Format</th><th>Summary</th><th>Updated</th><th>ID</th></tr></thead>
     <tbody>${filtered.map(item => {
       const mt = item.media_type || item.format || '';
       return `<tr>
         <td>${esc(resourceLabel(item))}</td>
         <td>${mediaBadge(mt)}</td>
         <td style="font-size:11px;font-family:monospace;color:var(--text-mono)">${esc(formatSummary(item))}</td>
+        <td style="font-size:10px;font-family:monospace;color:var(--text-tertiary)">${versionToStr(item.version)}</td>
         <td style="font-size:10px;font-family:monospace;color:var(--text-tertiary)">${esc(item.id?.substring(0,16))}…</td>
       </tr>`;
     }).join('')}</tbody>
