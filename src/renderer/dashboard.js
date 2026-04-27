@@ -732,8 +732,8 @@ function rebuildNodeList() {
         </div>
         <div style="font-size:10px;color:var(--text-tertiary);letter-spacing:0.04em;margin:10px 0 6px">DEVICES</div>
         ${devs.map(dev => buildDeviceCard(dev, sndByDev[dev.id]||[], rcvByDev[dev.id]||[], openDevIds, n)).join('')}
-        <div class="btn-row" style="margin-top:8px">
-          ${versionBadge(n)}
+        ${versionBadge(n)}
+        <div class="btn-row" style="margin-top:6px">
           <button class="btn-sm" onclick="showJsonModal('Node: ${esc(nodeLabel(n))}', window._nodesData.nodes.find(x=>x.id==='${esc(n.id)}'))">View raw JSON</button>
           <button class="btn-sm" onclick="window.api.openExternal('${appState.queryBase}/x-nmos/query/v1.3/nodes/${esc(n.id)}')">Open in browser</button>
         </div>
@@ -935,8 +935,8 @@ function rebuildSenderList() {
         <div id="sdp-${esc(s.id)}">${s.manifest_href
           ? `<div class="sdp-loading"><div class="spinner spinner-sm"></div>Loading SDP…</div>`
           : emptyHtml('No manifest_href')}</div>
-        <div class="btn-row" style="margin-top:8px">
-          ${versionBadge(s)}
+        ${versionBadge(s)}
+        <div class="btn-row" style="margin-top:6px">
           <button class="btn-sm" onclick="showJsonModal('Sender: ${esc(resourceLabel(s))}', window._sendersData.senders.find(x=>x.id==='${esc(s.id)}'))">View raw JSON</button>
           <button class="btn-sm" onclick="window.api.openExternal('${appState.queryBase}/x-nmos/query/v1.3/senders/${esc(s.id)}')">Open in browser</button>
         </div>
@@ -1181,9 +1181,9 @@ function rebuildReceiverList() {
             Not connected to any sender
           </div>`}
         </div>
-        <div class="btn-row">
+        ${versionBadge(r)}
+        <div class="btn-row" style="margin-top:6px">
           ${connected ? `<button class="btn-sm green" onclick="navToSenderFromReceiver('${esc(r.subscription.sender_id)}')">Go to Sender →</button>` : ''}
-          ${versionBadge(r)}
           <button class="btn-sm" onclick="showJsonModal('Receiver: ${esc(resourceLabel(r))}', window._receiversData.receivers.find(x=>x.id==='${esc(r.id)}'))">View raw JSON</button>
           <button class="btn-sm" onclick="window.api.openExternal('${appState.queryBase}/x-nmos/query/v1.3/receivers/${esc(r.id)}')">Open in browser</button>
         </div>
