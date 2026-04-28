@@ -9,11 +9,13 @@ Download, double-click, and your NMOS network has an RDS.
 
 ## What is this?
 
-NMOS Simple RDS Studio bundles [sony/nmos-cpp](https://github.com/sony/nmos-cpp) — a production-grade IS-04 registry — together with a graphical interface into one portable executable. Built on [Electron](https://www.electronjs.org/), it packages the nmos-cpp-registry binary and a web-based UI into a single self-contained `.exe`. It is designed for engineers who need an RDS running quickly, without the overhead of deploying and managing a server.
+Setting up an IS-04 RDS has always been painful — server configuration, dependencies, JSON files. NMOS Simple RDS Studio changes that.
 
-### This is an RDS, not just a viewer.
+It bundles [sony/nmos-cpp](https://github.com/sony/nmos-cpp) — a production-grade IS-04 registry — together with a monitoring dashboard into one portable `.exe`. Built on [Electron](https://www.electronjs.org/). Double-click and your NMOS network has an RDS.
 
-When you launch the app, it starts a real nmos-cpp-registry on your machine. NMOS nodes on your network can register with it immediately. The interface lets you see what's registered, inspect resources, and troubleshoot in real time.
+### RDS + viewer. Or just a viewer.
+
+Launch it and it runs a real IS-04 registry — NMOS nodes on your network can register immediately. But if you already have an RDS running, you can connect to it instead and use the dashboard as a read-only monitor. Either way, when something goes wrong, you get a clear view of registered nodes, senders, receivers, flows, and connection maps — without reading raw JSON.
 
 ---
 
@@ -135,9 +137,9 @@ nmos-cpp is copyright Sony Corporation, licensed under Apache 2.0.
 
 NMOS Simple RDS Studioは、[sony/nmos-cpp](https://github.com/sony/nmos-cpp)（プロダクション品質のIS-04レジストリ）とGUIを1つのポータブルexeにまとめたアプリケーションです。[Electron](https://www.electronjs.org/)をベースに、nmos-cpp-registryバイナリとWebベースのUIを1つの `.exe` にパッケージしています。サーバーの構築・管理コストをかけずに、すぐRDSを使いたいエンジニアのために作られています。
 
-### これはビューアではなく、RDSです。
+### RDS としても、ビューアーとしても。
 
-アプリを起動すると、PC上でnmos-cpp-registryが実際に動作します。ネットワーク上のNMOSノードはすぐにこのRDSに登録できます。インターフェースから、登録されているリソースの確認・詳細閲覧・トラブルシュートがリアルタイムで行えます。
+起動するとPC上でIS-04準拠のRDSが実際に動作し、ネットワーク上のNMOSノードがすぐ登録できます。すでにRDSが稼働している環境では、そのRDSに接続して読み取り専用のモニターとして使うこともできます。どちらの場合も、ノード・センダー・レシーバー・フロー・コネクションマップをダッシュボードで確認でき、生JSONを読まずにトラブルシュートができます。
 
 ---
 
