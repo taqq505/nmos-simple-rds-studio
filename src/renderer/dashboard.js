@@ -402,13 +402,22 @@ async function renderOverview(el, isRefresh = false) {
     <div class="ov-card" style="margin-bottom:10px;padding:10px 14px 6px;">
       <div class="ov-card-title">LIVE TIMELINE</div>
       <div style="position:relative;">
-        <div style="display:flex;justify-content:space-between;font-size:9px;font-family:monospace;color:var(--text-tertiary);padding:0 2px 2px;">
-          <span style="color:var(--green-600);font-weight:600;">← NOW</span>
-          <span>${appState.config?.timeline_window || 10} min ago →</span>
-        </div>
-        <div class="timeline-wrap" id="ov-timeline-wrap" style="position:relative;">
-          <div class="tl-shimmer-wrap"><div class="tl-shimmer-glow"></div></div>
-          <div class="timeline-rail" id="ov-timeline"></div>
+        <div class="tl-rail-row">
+          <span title="NOW" style="display:flex;align-items:center;cursor:default;flex-shrink:0;margin-top:25px;">
+            <span class="tl-live-dot" style="width:9px;height:9px;"></span>
+          </span>
+          <div style="flex:1;position:relative;">
+            <div class="timeline-wrap" id="ov-timeline-wrap" style="position:relative;">
+              <div class="tl-shimmer-wrap"><div class="tl-shimmer-glow"></div></div>
+              <div class="timeline-rail" id="ov-timeline"></div>
+            </div>
+          </div>
+          <span title="-${appState.config?.timeline_window || 10} min" style="display:flex;align-items:center;cursor:default;opacity:0.5;flex-shrink:0;color:var(--text-tertiary);margin-top:22px;">
+            <svg width="14" height="14" viewBox="0 0 12 12" fill="none">
+              <circle cx="6" cy="6" r="5" stroke="currentColor" stroke-width="1.2"/>
+              <path d="M6 3v3l2 1.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+            </svg>
+          </span>
         </div>
       </div>
     </div>
@@ -732,10 +741,10 @@ function rebuildNodeList() {
         </div>
         <div style="font-size:10px;color:var(--text-tertiary);letter-spacing:0.04em;margin:10px 0 6px">DEVICES</div>
         ${devs.map(dev => buildDeviceCard(dev, sndByDev[dev.id]||[], rcvByDev[dev.id]||[], openDevIds, n)).join('')}
-        ${versionBadge(n)}
-        <div class="btn-row" style="margin-top:6px">
+        <div class="btn-row" style="margin-top:8px">
           <button class="btn-sm" onclick="showJsonModal('Node: ${esc(nodeLabel(n))}', window._nodesData.nodes.find(x=>x.id==='${esc(n.id)}'))">View raw JSON</button>
           <button class="btn-sm" onclick="window.api.openExternal('${appState.queryBase}/x-nmos/query/v1.3/nodes/${esc(n.id)}')">Open in browser</button>
+          <span style="margin-left:auto">${versionBadge(n)}</span>
         </div>
       </div>
     </div>`;
@@ -935,10 +944,10 @@ function rebuildSenderList() {
         <div id="sdp-${esc(s.id)}">${s.manifest_href
           ? `<div class="sdp-loading"><div class="spinner spinner-sm"></div>Loading SDP…</div>`
           : emptyHtml('No manifest_href')}</div>
-        ${versionBadge(s)}
-        <div class="btn-row" style="margin-top:6px">
+        <div class="btn-row" style="margin-top:8px">
           <button class="btn-sm" onclick="showJsonModal('Sender: ${esc(resourceLabel(s))}', window._sendersData.senders.find(x=>x.id==='${esc(s.id)}'))">View raw JSON</button>
           <button class="btn-sm" onclick="window.api.openExternal('${appState.queryBase}/x-nmos/query/v1.3/senders/${esc(s.id)}')">Open in browser</button>
+          <span style="margin-left:auto">${versionBadge(s)}</span>
         </div>
       </div>
     </div>`;
@@ -1181,11 +1190,11 @@ function rebuildReceiverList() {
             Not connected to any sender
           </div>`}
         </div>
-        ${versionBadge(r)}
-        <div class="btn-row" style="margin-top:6px">
+        <div class="btn-row" style="margin-top:8px">
           ${connected ? `<button class="btn-sm green" onclick="navToSenderFromReceiver('${esc(r.subscription.sender_id)}')">Go to Sender →</button>` : ''}
           <button class="btn-sm" onclick="showJsonModal('Receiver: ${esc(resourceLabel(r))}', window._receiversData.receivers.find(x=>x.id==='${esc(r.id)}'))">View raw JSON</button>
           <button class="btn-sm" onclick="window.api.openExternal('${appState.queryBase}/x-nmos/query/v1.3/receivers/${esc(r.id)}')">Open in browser</button>
+          <span style="margin-left:auto">${versionBadge(r)}</span>
         </div>
       </div>
     </div>`;
