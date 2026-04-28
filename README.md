@@ -28,7 +28,7 @@ Start an IS-04 compliant registry directly from the app. Configure network inter
 ### 🔍 Real-time Visualization
 See everything registered in your NMOS network at a glance:
 
-- **Overview** — Node count, sender/receiver/flow totals, receiver connection rate gauge, format distribution chart, live timeline, node REG/UNREG activity feed, sparkline history per metric
+- **Overview** — Node count, sender/receiver/flow totals, receiver connection rate gauge, format distribution chart, live timeline, sparkline history per metric; registered nodes table (left) and node event feed (right) side by side — click any node row to jump to its detail page
 - **Map** — Connection map showing sender/receiver links with hover highlighting
 - **Nodes** — Node → device → sender/receiver hierarchy; IS-05/07/08 API badges where advertised
 - **Senders** — SDP display, transport details, direct REST API access
@@ -36,13 +36,16 @@ See everything registered in your NMOS network at a glance:
 - **Flows / Sources** — Format summaries and source relationships (ANC correctly detected)
 - **Log** — Live log stream from the running RDS process (local mode only)
 - **RDS Settings** — Network interface, ports, domain, priority, logging level
-- **App Settings** — Update mode (WebSocket or interval), poll interval, timeline window
+- **App Settings** — Appearance (dark mode), update mode (WebSocket or interval), poll interval, timeline window
 
 ### ⚡ WebSocket Updates
 By default the dashboard subscribes to the IS-04 Query API WebSocket feed and refreshes automatically when resources change. Falls back to interval polling if the RDS does not support WebSocket subscriptions. Both modes are configurable in App Settings.
 
+### 🌙 Dark Mode
+Toggle dark mode in App Settings → Appearance. The setting is saved and applied on every launch, including the startup screen.
+
 ### 🔔 Node Notifications
-When a node registers (REG) or deregisters (UNREG), a toast notification appears and the event is logged in the Overview activity feed and live timeline.
+When a node registers (REG) or deregisters (UNREG), a toast notification appears and the event is logged in the Overview node event feed and live timeline. Receiver connection changes (CON/DIS) are also tracked separately in amber.
 
 ### 🔎 Global Search
 Press `Ctrl+K` to open the search bar. Search by node name, hostname, IP address, sender/receiver label, flow format, or resource ID. Click a result to navigate directly to that resource.
@@ -149,7 +152,7 @@ nmos-cpp-registryバイナリを同梱した1つのポータブル `.exe` にす
 ### 🔍 リアルタイム可視化
 NMOSネットワークの登録状況を一画面で把握できます：
 
-- **Overview** — ノード数・センダー/レシーバー/フロー数、最近のアクティビティ
+- **Overview** — ノード数・センダー/レシーバー/フロー数、接続率ゲージ、フォーマット分布、ライブタイムライン、スパークライン履歴；登録ノード一覧（左2/3）とノードイベントフィード（右1/3）が横並び表示 — ノード行をクリックすると詳細ページへ直接遷移
 - **Map** — センダー/レシーバーの接続マップ（ホバーでハイライト）
 - **Nodes** — ノード → デバイス → センダー/レシーバーの階層表示、IS-05/07/08 APIバッジ表示
 - **Senders** — SDP表示、トランスポート詳細、REST APIへの直接アクセス
@@ -157,13 +160,16 @@ NMOSネットワークの登録状況を一画面で把握できます：
 - **Flows / Sources** — フォーマットサマリー、ソース関係（ANC: video/smpte291 を正確に識別）
 - **Log** — 実行中のRDSプロセスからのライブログストリーム（ローカルモードのみ）
 - **RDS Settings** — ネットワークインターフェース、ポート、ドメイン、プライオリティ、ログレベル
-- **App Settings** — 更新モード（WebSocket / インターバル）、ポーリング間隔、タイムライン表示幅
+- **App Settings** — 外観（ダークモード）、更新モード（WebSocket / インターバル）、ポーリング間隔、タイムライン表示幅
 
 ### ⚡ WebSocket更新
 デフォルトでIS-04 Query APIのWebSocketフィードを購読し、リソースの変更を即時反映します。RDSがWebSocketサブスクリプションに対応していない場合は、インターバルポーリングに自動フォールバックします。どちらもApp Settingsで設定可能です。
 
+### 🌙 ダークモード
+App Settings → Appearance でダークモードに切り替えられます。設定はconfig.jsonに保存され、スプラッシュ画面含め次回起動から即時反映されます。
+
 ### 🔔 ノード登録通知
-ノードの登録（REG）・登録解除（UNREG）をリアルタイムでトースト通知します。OverviewのNode Eventsフィードとライブタイムラインにも記録されます。
+ノードの登録（REG）・登録解除（UNREG）をリアルタイムでトースト通知します。OverviewのNode Eventsフィードとライブタイムラインにも記録されます。レシーバーの接続・切断（CON/DIS）も琥珀色で区別して表示されます。
 
 ### 🔎 グローバル検索
 `Ctrl+K` で検索バーを開き、ノード名・ホスト名・IPアドレス・センダー/レシーバー名・フォーマット・IDで横断検索できます。結果をクリックすると該当ページに直接遷移します。

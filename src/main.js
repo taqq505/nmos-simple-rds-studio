@@ -28,6 +28,7 @@ const DEFAULT_CONFIG = {
   update_mode: 'websocket',
   poll_interval: 5,
   timeline_window: 10,
+  theme: 'light',
 };
 
 function loadConfig() {

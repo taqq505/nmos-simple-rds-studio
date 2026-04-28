@@ -1,6 +1,6 @@
 {
   "name": "nmos-simple-rds-studio",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A desktop app for visualizing and troubleshooting AMWA IS-04 Registration & Discovery System",
   "main": "src/main.js",
   "author": "taqq505",

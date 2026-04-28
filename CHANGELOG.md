@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.0] - 2026-04-29
+
+### Overview
+- Registered nodes table (left 2/3) and Node Events feed (right 1/3) now side by side
+- Click any node row in Overview to navigate directly to its detail page in the Nodes tab
+- Live Timeline: receiver connection events (CON/DIS) shown in amber; node events (REG/UNREG) in green/red
+- Node Events feed: correctly shows CON/DIS labels for receiver connect/disconnect (was incorrectly showing UNREG)
+- Removed broken "Recent activity" log panel (was fetching a non-existent endpoint)
+
+### Dark Mode
+- Dark mode toggle added to App Settings → Appearance
+- Applies instantly without page reload; persists in `config.json` across restarts
+- Splash screen respects the saved theme on launch
+
+### Splash Screen
+- All hardcoded colors replaced with CSS variables — hover states and text now correctly adapt to dark mode
+- "Resume last session" description now shows mode: `Launch RDS · Port…` or `Connect · URL…`
+- Fixed bug where Resume always launched a local RDS even if the last session was a remote connect
+
 ## [0.1.0] - 2026-04-28
 
 ### Initial Release

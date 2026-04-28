@@ -53,6 +53,8 @@ async function init() {
     appState.regBase   = (cfg.remote_reg_url || cfg.remote_url || '').replace(/\/$/, '');
   }
 
+  document.documentElement.dataset.theme = cfg.theme || 'light';
+
   document.getElementById('tb-url').textContent = appState.queryBase;
   document.getElementById('tb-badge').textContent =
     cfg.mode === 'local' ? 'RDS Running' : 'Connected';
@@ -66,7 +68,8 @@ async function init() {
     initWebSocket();
   }
 
-  watchNodes();
+  await watchNodes();
+  await watchReceivers();
   navigateTo('overview');
 }
 
@@ -135,7 +138,7 @@ function startRefresh(fn, ms) {
   if (!ms && cfg.update_mode === 'websocket' && !wsUnsupported) {
     resetWsWatchdog();
   } else {
-    refreshTimer = setInterval(() => { fn(); markLastUpdated(); watchNodes(); }, ms || pollMs);
+    refreshTimer = setInterval(() => { fn(); markLastUpdated(); watchNodes(); watchReceivers(); }, ms || pollMs);
   }
 }
 function stopRefresh() {
@@ -188,6 +191,7 @@ function onWsMessage() {
   if (currentRefreshFn) currentRefreshFn();
   markLastUpdated();
   watchNodes();
+  watchReceivers();
   showToast('Updated', 'info', 1500);
 }
 
@@ -350,8 +354,6 @@ async function renderOverview(el, isRefresh = false) {
     devices.forEach(d => { devMap[d.node_id] = (devMap[d.node_id] || 0) + 1; });
   }
 
-  const recentLog = await apiFetch(`${appState.regBase}/log/events`);
-  const recentLines = (recentLog || []).slice(-8).reverse();
 
   // Stats
   const connectedRcv = (receivers||[]).filter(r => r.subscription?.active && r.subscription?.sender_id).length;
@@ -422,34 +424,24 @@ async function renderOverview(el, isRefresh = false) {
       </div>
     </div>
 
-    <div class="section-title">Registered nodes</div>
-    ${nodes && nodes.length ? `
-    <table class="data-table">
-      <thead><tr><th></th><th>Node name</th><th>IP address</th><th>Devices</th></tr></thead>
-      <tbody>${nodes.map(n => `<tr>
-        <td style="width:16px;"><span class="led-dot"></span></td>
-        <td>${esc(nodeLabel(n))}</td>
-        <td><span style="font-family:monospace;font-size:12px;color:var(--text-mono)">${esc(nodeIp(n))}</span></td>
-        <td>${devMap[n.id] || 0}</td>
-      </tr>`).join('')}</tbody>
-    </table>` : emptyHtml('No nodes registered')}
-
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px;">
+    <div style="display:grid;grid-template-columns:2fr 1fr;gap:12px;margin-top:10px;align-items:start;">
+      <div class="activity-box">
+        <div class="activity-header"><span class="led-dot"></span>Registered nodes</div>
+        ${nodes && nodes.length ? `
+        <table class="data-table">
+          <thead><tr><th></th><th>Node name</th><th>IP address</th><th>Devices</th></tr></thead>
+          <tbody>${nodes.map(n => `<tr style="cursor:pointer;" onclick="navToNode('${esc(n.id)}')">
+            <td style="width:16px;"><span class="led-dot"></span></td>
+            <td>${esc(nodeLabel(n))}</td>
+            <td><span style="font-family:monospace;font-size:12px;color:var(--text-mono)">${esc(nodeIp(n))}</span></td>
+            <td>${devMap[n.id] || 0}</td>
+          </tr>`).join('')}</tbody>
+        </table>` : emptyHtml('No nodes registered')}
+      </div>
       <div class="activity-box">
         <div class="activity-header"><span class="live-dot"></span>Node events</div>
         <div id="node-activity-feed" style="padding:4px 12px 8px;">
           <div style="color:var(--text-tertiary);font-size:11px;padding:6px 0;">No events yet</div>
-        </div>
-      </div>
-      <div class="activity-box">
-        <div class="activity-header"><span class="live-dot"></span>Recent activity</div>
-        <div class="activity-body">
-          ${recentLines.length ? recentLines.map(e => {
-            const ts = (e.timestamp||'').substring(11,19);
-            const lv = levelName(e.level);
-            const cls = lv==='error'||lv==='fatal' ? 'act-error' : lv==='warning' ? 'act-warn' : 'act-info';
-            return `<div class="activity-line ${cls}">[${esc(ts)}] ${esc(lv.toUpperCase().padEnd(4))} ${esc(e.message||'')}</div>`;
-          }).join('') : '<div class="activity-line act-info" style="color:#bbb">No recent activity</div>'}
         </div>
       </div>
     </div>
@@ -701,6 +693,13 @@ async function renderNodes(el, isRefresh = false) {
 
   if (!nodes) { body.innerHTML = errorHtml('Failed to fetch nodes'); startRefresh(() => renderNodes(el, true)); return; }
   rebuildNodeList();
+
+  if (appState.navigateTo?.page === 'nodes') {
+    const target = appState.navigateTo;
+    appState.navigateTo = null;
+    setTimeout(() => highlightNode(target.resourceId), 100);
+  }
+
   startRefresh(() => renderNodes(el, true));
 }
 
@@ -816,6 +815,20 @@ function toggleDev(id) {
   }
 }
 
+function navToNode(resourceId) {
+  appState.navigateTo = { page: 'nodes', resourceId };
+  navigateTo('nodes');
+}
+function highlightNode(id) {
+  const body = document.getElementById(`nbody-${id}`);
+  const chev = document.getElementById(`chev-node-${id}`);
+  const card = document.querySelector(`.acc-card[data-node-id="${id}"]`);
+  if (!body) return;
+  body.classList.add('open');
+  if (chev) chev.style.transform = 'rotate(90deg)';
+  card?.classList.add('highlighted');
+  setTimeout(() => card?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100);
+}
 function navToSender(resourceId, fromNode, fromDevice) {
   appState.navigateTo = { page: 'senders', resourceId, fromNode, fromDevice };
   navigateTo('senders');
@@ -1697,6 +1710,17 @@ async function renderAppSettings(el) {
   el.innerHTML = toolbar('App Settings') + `
     <div class="page-content">
 
+      <div class="settings-section-title">APPEARANCE</div>
+      <div class="setting-row">
+        <div class="setting-info"><div class="setting-label">Dark mode</div></div>
+        <div class="setting-control">
+          <label class="theme-toggle">
+            <input type="checkbox" id="s-dark-mode" ${(cfg.theme||'light')==='dark'?'checked':''}>
+            <span class="theme-toggle-slider"></span>
+          </label>
+        </div>
+      </div>
+
       <div class="settings-section-title">UPDATE</div>
       <div class="setting-row">
         <div class="setting-info"><div class="setting-label">Update mode</div></div>
@@ -1728,9 +1752,45 @@ async function renderAppSettings(el) {
 
       <div class="settings-section-title" style="margin-top:24px">ABOUT</div>
       <div class="settings-about">
-        <strong>NMOS Simple RDS Studio</strong> &nbsp; v${esc(version)}<br>
-        RDS engine: nmos-cpp (<a href="#" onclick="return false">sony/nmos-cpp</a>)<br>
-        License: Apache License 2.0
+        <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px;">
+          <strong style="font-size:14px;color:var(--text-primary)">NMOS Simple RDS Studio</strong>
+          <span style="font-size:11px;color:var(--text-tertiary)">v${esc(version)}</span>
+        </div>
+        <div style="font-size:12px;color:var(--text-secondary);line-height:1.7;margin-bottom:10px;">
+          A single portable .exe that runs a full AMWA IS-04 Registration &amp; Discovery System on Windows.<br>
+          No server setup. No configuration files. Double-click and your NMOS network has an RDS.
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px;font-size:11px;margin-bottom:12px;">
+          <div>
+            <span style="color:var(--text-tertiary)">RDS Engine</span>
+            <span style="margin-left:8px;">
+              <a href="#" onclick="window.api.openExternal('https://github.com/sony/nmos-cpp');return false;" style="color:var(--blue-600);text-decoration:none;">sony/nmos-cpp</a>
+              <span style="color:var(--text-tertiary);margin-left:4px;">— Apache 2.0</span>
+            </span>
+          </div>
+          <div>
+            <span style="color:var(--text-tertiary)">Source</span>
+            <span style="margin-left:8px;">
+              <a href="#" onclick="window.api.openExternal('https://github.com/taqq505/nmos-simple-rds-studio');return false;" style="color:var(--blue-600);text-decoration:none;">github.com/taqq505/nmos-simple-rds-studio</a>
+            </span>
+          </div>
+          <div>
+            <span style="color:var(--text-tertiary)">Author</span>
+            <span style="margin-left:8px;">
+              <a href="#" onclick="window.api.openExternal('https://github.com/taqq505');return false;" style="color:var(--blue-600);text-decoration:none;">taqq505</a>
+            </span>
+          </div>
+          <div>
+            <span style="color:var(--text-tertiary)">License</span>
+            <span style="margin-left:8px;color:var(--text-secondary);">Apache License 2.0</span>
+          </div>
+        </div>
+        <div style="border-top:0.5px solid var(--border-default);padding-top:10px;">
+          <div style="font-size:10px;font-weight:600;color:var(--text-tertiary);letter-spacing:0.06em;margin-bottom:6px;">OTHER PROJECTS</div>
+          <div style="font-size:11px;display:flex;flex-direction:column;gap:4px;">
+            <a href="#" onclick="window.api.openExternal('https://taqq505.github.io/nmos-patch-gui/');return false;" style="color:var(--blue-600);text-decoration:none;">NMOS Simple BCC — Browser-based IS-04/IS-05 patching tool</a>
+          </div>
+        </div>
       </div>
       <div id="app-save-feedback" style="font-size:12px;color:var(--green-600);margin-top:8px;"></div>
     </div>
@@ -1758,6 +1818,13 @@ async function renderAppSettings(el) {
     const fb = el.querySelector('#app-save-feedback');
     if (fb) { fb.textContent = '✓ Saved'; setTimeout(() => fb.textContent = '', 2000); }
   });
+
+  el.querySelector('#s-dark-mode')?.addEventListener('change', async (e) => {
+    const theme = e.target.checked ? 'dark' : 'light';
+    document.documentElement.dataset.theme = theme;
+    appState.config = { ...appState.config, theme };
+    await window.api.saveConfig(appState.config);
+  });
 }
 
 // ─── Metric Counter Animation + Sparkline History ────────────────────────────
@@ -1765,10 +1832,8 @@ const prevMetrics = {};
 const getTimelineWindowMs = () => ((appState.config?.timeline_window || 10) * 60 * 1000);
 const metricsHistory = { nodes: [], senders: [], receivers: [], flows: [] };
 const sparklineColors = {
-  nodes:     '#185FA5',
-  senders:   '#3B6D11',
-  receivers: '#534AB7',
-  flows:     '#854F0B',
+  light: { nodes: '#185FA5', senders: '#3B6D11', receivers: '#534AB7', flows: '#854F0B' },
+  dark:  { nodes: '#4D94D1', senders: '#6AAD2A', receivers: '#8078D4', flows: '#C4781A' },
 };
 
 function recordMetrics(metrics) {
@@ -1786,7 +1851,10 @@ function recordMetrics(metrics) {
 
 function sparklineSvg(key, w = 80, h = 30) {
   const pts = metricsHistory[key];
-  const color = sparklineColors[key] || '#185FA5';
+  const isDark = document.documentElement.dataset.theme === 'dark';
+  const palette = isDark ? sparklineColors.dark : sparklineColors.light;
+  const color = palette[key] || '#185FA5';
+  const opacity = isDark ? 0.5 : 0.18;
   if (pts.length < 2) return '';
   const now = Date.now();
   const tMin = now - getTimelineWindowMs();
@@ -1800,7 +1868,7 @@ function sparklineSvg(key, w = 80, h = 30) {
   const areaD = `M ${toX(pts[0].t).toFixed(1)},${h} L ${coords.join(' L ')} L ${toX(pts[pts.length-1].t).toFixed(1)},${h} Z`;
   const uid = `sg-${key}`;
   return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"
-    style="position:absolute;bottom:0;right:0;opacity:0.18;pointer-events:none;">
+    style="position:absolute;bottom:0;right:0;opacity:${opacity};pointer-events:none;">
     <defs>
       <linearGradient id="${uid}" x1="0" y1="0" x2="0" y2="1">
         <stop offset="0%" stop-color="${color}"/>
@@ -1841,12 +1909,13 @@ function animateMetrics(metrics) {
 // ─── Activity Log & Node Watcher ─────────────────────────────────────────────
 const activityLog = [];
 const MAX_ACTIVITY = 100;
-let previousNodeMap = null; // null = not initialized yet
+let previousNodeMap     = null;
+let previousReceiverMap = null;
 
-function addActivity(type, label) {
+function addActivity(type, label, size = 'node') {
   const now = new Date();
   const time = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
-  activityLog.unshift({ type, label, time, ts: Date.now() });
+  activityLog.unshift({ type, label, time, ts: Date.now(), size });
   if (activityLog.length > MAX_ACTIVITY) activityLog.pop();
   const feed = document.getElementById('node-activity-feed');
   if (feed) renderActivityFeed();
@@ -1861,7 +1930,7 @@ function renderActivityFeed() {
     } else {
       feed.innerHTML = activityLog.slice(0, 30).map(a => `
         <div style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:0.5px solid var(--border-default);">
-          <span style="font-size:13px;color:${a.type==='join'?'var(--green-600)':'var(--red-600)'};">${a.type==='join'?'REG':'UNREG'}</span>
+          <span style="font-size:13px;color:${a.type==='join'?'var(--green-600)':a.type==='leave'?'var(--red-600)':'var(--amber-600)'};">${a.type==='join'?'REG':a.type==='leave'?'UNREG':a.type==='rcv-connect'?'CON':'DIS'}</span>
           <span style="flex:1;font-size:12px;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(a.label)}</span>
           <span style="font-size:10px;font-family:monospace;color:var(--text-tertiary);flex-shrink:0;">${a.time}</span>
         </div>
@@ -1914,29 +1983,60 @@ function renderTimeline(isNew = false) {
   tip.style.cssText = 'position:absolute;z-index:100;background:#222;color:#fff;font-size:10px;border-radius:6px;padding:5px 8px;pointer-events:none;display:none;white-space:nowrap;line-height:1.6;transform:translateX(-50%);bottom:100%;margin-bottom:6px;';
   rail.appendChild(tip);
 
-  groups.forEach((g, i) => {
+  // Draw receivers first (lower layer), then nodes on top
+  const sorted = [...groups].sort((a, b) => {
+    const aIsRecv = a.events.every(e => e.size === 'receiver');
+    const bIsRecv = b.events.every(e => e.size === 'receiver');
+    return aIsRecv === bIsRecv ? 0 : aIsRecv ? -1 : 1;
+  });
+
+  sorted.forEach((g, i) => {
     const age = now - g.ts;
     const xPct = (age / getTimelineWindowMs()) * 100;
     if (xPct < 0 || xPct > 100) return;
 
-    const hasJoin  = g.events.some(e => e.type === 'join');
-    const hasLeave = g.events.some(e => e.type === 'leave');
-    const dotColor = hasJoin && hasLeave ? '#854F0B' : hasJoin ? 'var(--green-600)' : 'var(--red-600)';
-    const typeLabel = hasJoin && hasLeave ? 'MIX' : hasJoin ? 'REG' : 'UNREG';
+    const isRecv  = g.events.every(e => e.size === 'receiver');
+    const hasJoin  = g.events.some(e => e.type === 'join' || e.type === 'rcv-connect');
+    const hasLeave = g.events.some(e => e.type === 'leave' || e.type === 'rcv-disconnect');
+    const dotColor = isRecv
+      ? 'var(--amber-600)'
+      : (hasJoin && hasLeave ? '#854F0B' : hasJoin ? 'var(--green-600)' : 'var(--red-600)');
+
+    const ageFrac = Math.min(1, age / getTimelineWindowMs());
     const count = g.events.length;
 
+    const dotSize = isRecv
+      ? Math.max(4, Math.round(Math.min(9, 5 + (count - 1) * 1.5) * (1 - ageFrac * 0.4)))
+      : Math.max(7, Math.round(12 - ageFrac * 5));
+    const opacity = isRecv
+      ? Math.max(0.12, Math.min(0.7, 0.22 + (count - 1) * 0.15) * (1 - ageFrac * 0.45))
+      : Math.max(0.35, 1 - ageFrac * 0.65);
+
+    const typeLabel = hasJoin && hasLeave ? 'MIX' : hasJoin ? 'REG' : 'UNREG';
+    const isNewDot = i === 0 && isNew && !isRecv;
+    const zIndex = isRecv ? 1 : 2;
+
+    // Rail line is at top:25px of rail. .timeline-dot has margin:3px 0 (not in formula by default).
+    // paddingTop = 25 - labelH - 3(margin) - dotSize/2 = 22 - labelH - dotSize/2
+    const labelH = isRecv ? 0 : 14;
+    const paddingTop = Math.max(0, Math.round(22 - labelH - dotSize / 2));
+
     const el = document.createElement('div');
-    el.style.cssText = `position:absolute;left:${xPct}%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;padding-top:2px;cursor:default;`;
-    el.innerHTML = `
+    el.style.cssText = `position:absolute;left:${xPct}%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;padding-top:${paddingTop}px;cursor:default;opacity:${opacity};z-index:${zIndex};`;
+    el.innerHTML = isRecv ? `
+      <div class="timeline-dot" style="background:${dotColor};width:${dotSize}px;height:${dotSize}px;"></div>
+    ` : `
       <div style="font-size:9px;font-weight:600;color:${dotColor};height:14px;line-height:14px;">${typeLabel}</div>
-      <div class="timeline-dot${i===0&&isNew?' new':''}" style="background:${dotColor};"></div>
-      ${count > 1 ? `<div style="font-size:9px;font-weight:600;color:${dotColor};margin-top:3px;">×${count}</div>` : '<div style="height:14px;"></div>'}
+      <div class="timeline-dot${isNewDot?' new':''}" style="background:${dotColor};width:${dotSize}px;height:${dotSize}px;"></div>
+      <div style="width:1px;height:5px;background:${dotColor};margin-top:1px;opacity:0.6;"></div>
+      ${count > 1 ? `<div style="font-size:9px;font-weight:600;color:${dotColor};margin-top:2px;">×${count}</div>` : ''}
     `;
 
     el.addEventListener('mouseenter', () => {
-      const lines = g.events.map(e =>
-        `${e.type==='join'?'REG':'UNREG'} ${e.label}  <span style="color:#aaa;font-family:monospace;">${e.time}</span>`
-      ).join('<br>');
+      const lines = g.events.map(e => {
+        const tag = e.type==='join'?'REG':e.type==='leave'?'UNREG':e.type==='rcv-connect'?'CON':'DIS';
+        return `${tag} ${e.label}  <span style="color:#aaa;font-family:monospace;">${e.time}</span>`;
+      }).join('<br>');
       tip.innerHTML = lines;
       tip.style.left = `${xPct}%`;
       tip.style.display = 'block';
@@ -1982,6 +2082,27 @@ async function watchNodes() {
   }
 
   previousNodeMap = newMap;
+}
+
+async function watchReceivers() {
+  const res = await window.api.fetch(`${appState.queryBase}${QUERY_PATH}/receivers`, { readBody: true });
+  if (!res.ok) return;
+  let receivers;
+  try { receivers = JSON.parse(res.text); } catch { return; }
+
+  const newMap = new Map(receivers.map(r => [r.id, { senderId: r.subscription?.sender_id || null, label: resourceLabel(r) }]));
+
+  if (previousReceiverMap === null) { previousReceiverMap = newMap; return; }
+
+  for (const [id, { senderId, label }] of newMap) {
+    const prev = previousReceiverMap.get(id);
+    if (!prev) continue;
+    if (senderId !== prev.senderId) {
+      addActivity(senderId ? 'rcv-connect' : 'rcv-disconnect', label, 'receiver');
+    }
+  }
+
+  previousReceiverMap = newMap;
 }
 
 // ─── Global Search ────────────────────────────────────────────────────────────

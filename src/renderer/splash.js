@@ -23,6 +23,7 @@ let discoveredRdsList = [];  // mDNS discovered RDS instances
 
 async function init() {
   savedConfig = await window.api.loadConfig();
+  if (savedConfig?.theme) document.documentElement.dataset.theme = savedConfig.theme;
 
   // Start mDNS browse immediately so results arrive while user reads the screen
   window.api.startMdnsBrowse();
@@ -58,15 +59,18 @@ function showStep1() {
   stepHistory = [];
 
   const hasConfig = savedConfig !== null;
+  const isRemote = hasConfig && savedConfig.mode === 'remote';
   const resumeDesc = hasConfig
-    ? `Port ${savedConfig.registration_port} · priority ${savedConfig.priority} · ${savedConfig.domain}`
+    ? isRemote
+      ? `Connect · ${savedConfig.remote_url || ''}`
+      : `Launch RDS · Port ${savedConfig.registration_port} · priority ${savedConfig.priority} · ${savedConfig.domain}`
     : '';
 
   document.getElementById('content').innerHTML = `
     <div style="text-align:center; margin-bottom:24px; margin-top:8px;">
       <div style="
         width:52px; height:52px; border-radius:12px;
-        background:#E6F1FB; border:0.5px solid #B5D4F4;
+        background:var(--color-blue-50); border:0.5px solid var(--color-border-default);
         display:inline-flex; align-items:center; justify-content:center;
         margin-bottom:12px;">
         <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
@@ -78,51 +82,51 @@ function showStep1() {
           <circle cx="14" cy="4" r="1.5" fill="#185FA5"/>
         </svg>
       </div>
-      <div style="font-size:18px; font-weight:500; color:#111;">NMOS Simple RDS Studio</div>
-      <div style="font-size:12px; color:#888; margin-top:3px;">IS-04 Registration &amp; Discovery</div>
+      <div style="font-size:18px; font-weight:500; color:var(--color-text-primary);">NMOS Simple RDS Studio</div>
+      <div style="font-size:12px; color:var(--color-text-secondary); margin-top:3px;">IS-04 Registration &amp; Discovery</div>
     </div>
 
-    <div style="display:flex; align-items:center; gap:8px; background:#f9f9f9; border-radius:8px; padding:10px 14px; margin-bottom:8px;">
+    <div style="display:flex; align-items:center; gap:8px; background:var(--color-bg-secondary); border:0.5px solid var(--color-border-default); border-radius:8px; padding:10px 14px; margin-bottom:8px;">
       <div class="spinner spinner-md"></div>
-      <span style="font-size:12px; color:#888;">Searching for RDS on network...</span>
+      <span style="font-size:12px; color:var(--color-text-secondary);">Searching for RDS on network...</span>
     </div>
     <div id="step1-rds-list" style="margin-bottom:8px;"></div>
 
-    <div style="font-size:11px; color:#bbb; text-align:center; margin-bottom:16px;">Select startup mode</div>
+    <div style="font-size:11px; color:var(--color-text-tertiary); text-align:center; margin-bottom:16px;">Select startup mode</div>
 
     <div style="display:flex; flex-direction:column; gap:8px;">
       ${hasConfig ? `
       <div class="opt-card" id="btn-resume">
-        <div class="opt-icon" style="background:#EAF3DE;">
+        <div class="opt-icon" style="background:var(--color-green-50);">
           <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
             <circle cx="9" cy="9" r="7" stroke="#3B6D11" stroke-width="1.5"/>
             <path d="M6 9l2 2 4-4" stroke="#3B6D11" stroke-width="1.5" stroke-linecap="round"/>
           </svg>
         </div>
         <div style="flex:1;">
-          <div style="font-size:13px; font-weight:500; color:#111;">
+          <div class="opt-card-title">
             Resume last session
             <span class="badge badge-green" style="margin-left:6px;">Recommended</span>
           </div>
-          <div style="font-size:11px; color:#888; margin-top:2px;">${resumeDesc}</div>
+          <div class="opt-card-desc">${safeText(resumeDesc)}</div>
         </div>
       </div>` : ''}
 
       <div class="opt-card" id="btn-launch">
-        <div class="opt-icon" style="background:#E6F1FB;">
+        <div class="opt-icon" style="background:var(--color-blue-50);">
           <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
             <rect x="3" y="5" width="12" height="8" rx="1.5" stroke="#185FA5" stroke-width="1.5"/>
             <path d="M9 2v3M7 16h4" stroke="#185FA5" stroke-width="1.5" stroke-linecap="round"/>
           </svg>
         </div>
         <div>
-          <div style="font-size:13px; font-weight:500; color:#111;">Launch new RDS</div>
-          <div style="font-size:11px; color:#888; margin-top:2px;">Configure and start a new registry</div>
+          <div class="opt-card-title">Launch new RDS</div>
+          <div class="opt-card-desc">Configure and start a new registry</div>
         </div>
       </div>
 
       <div class="opt-card" id="btn-connect">
-        <div class="opt-icon" style="background:#EEEDFE;">
+        <div class="opt-icon" style="background:var(--color-purple-50);">
           <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
             <circle cx="5" cy="9" r="2.5" stroke="#534AB7" stroke-width="1.5"/>
             <circle cx="13" cy="9" r="2.5" stroke="#534AB7" stroke-width="1.5"/>
@@ -130,14 +134,12 @@ function showStep1() {
           </svg>
         </div>
         <div>
-          <div style="font-size:13px; font-weight:500; color:#111;">Connect to existing RDS</div>
-          <div style="font-size:11px; color:#888; margin-top:2px;">Monitor and manage a running registry</div>
+          <div class="opt-card-title">Connect to existing RDS</div>
+          <div class="opt-card-desc">Monitor and manage a running registry</div>
         </div>
       </div>
     </div>
   `;
-
-  addOptCardStyles();
 
   if (hasConfig) {
     document.getElementById('btn-resume').addEventListener('click', onResume);
@@ -149,30 +151,6 @@ function showStep1() {
   renderDiscoveredList('step1-rds-list');
 }
 
-function addOptCardStyles() {
-  if (document.getElementById('opt-card-style')) return;
-  const style = document.createElement('style');
-  style.id = 'opt-card-style';
-  style.textContent = `
-    .opt-card {
-      border: 0.5px solid #e0e0e0;
-      border-radius: 12px;
-      padding: 14px 16px;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      gap: 14px;
-      transition: background 0.15s;
-    }
-    .opt-card:hover { background: #f9f9f9; }
-    .opt-icon {
-      width: 36px; height: 36px; border-radius: 8px;
-      display: flex; align-items: center; justify-content: center;
-      flex-shrink: 0;
-    }
-  `;
-  document.head.appendChild(style);
-}
 
 function safeText(str) {
   return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -217,8 +195,7 @@ function connectDiscovered(rds) {
 }
 
 async function onResume() {
-  // savedConfig already loaded — go straight to Step 3
-  showStep3({ mode: 'local', config: savedConfig });
+  showStep3({ mode: savedConfig.mode, config: savedConfig });
 }
 
 // ─── Step 2a: Launch New RDS ──────────────────────────────────────────────────
@@ -408,8 +385,8 @@ function showStep2b() {
         <input class="form-input" type="text" id="inp-ip" placeholder="10.57.21.10" style="font-family:monospace;">
       </div>
       <div class="form-group" style="width:80px; flex-shrink:0; margin-bottom:0;">
-        <div class="form-label">Port <span class="form-hint">3211</span></div>
-        <input class="form-input" type="text" id="inp-port" value="3211" style="font-family:monospace;">
+        <div class="form-label">Query port</div>
+        <input class="form-input" type="text" id="inp-port" placeholder="3211" style="font-family:monospace;">
       </div>
     </div>
 
