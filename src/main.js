@@ -458,7 +458,7 @@ ipcMain.handle('log:saveAs', async (_e, srcPath) => {
  * Proxy HTTP request via Node.js to bypass renderer CORS restrictions.
  * @param {string} url
  * @param {object} [opts] - { method, headers, body, readBody }
- * @returns {{ ok: boolean, status: number, text: string }}
+ * @returns {{ ok: boolean, status: number, text: string, headers: object }}
  */
 ipcMain.handle('app:fetch', (_e, url, opts = {}) => {
   return new Promise((resolve) => {
@@ -469,6 +469,8 @@ ipcMain.handle('app:fetch', (_e, url, opts = {}) => {
     const reqHeaders = { ...headers };
     if (bodyBuf) {
       reqHeaders['Content-Length'] = bodyBuf.length;
+    } else if (method !== 'GET' && method !== 'HEAD') {
+      reqHeaders['Content-Length'] = 0;
     }
 
     const parsedUrl = new URL(url);
@@ -487,7 +489,7 @@ ipcMain.handle('app:fetch', (_e, url, opts = {}) => {
       res.on('data', (chunk) => chunks.push(chunk));
       res.on('end', () => {
         const text = readBody ? Buffer.concat(chunks).toString('utf-8') : '';
-        resolve({ ok: res.statusCode >= 200 && res.statusCode < 400, status: res.statusCode, text });
+        resolve({ ok: res.statusCode >= 200 && res.statusCode < 400, status: res.statusCode, text, headers: res.headers });
       });
     });
 

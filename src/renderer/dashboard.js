@@ -213,11 +213,60 @@ function resetWsWatchdog() {
 }
 
 // ─── API utilities ────────────────────────────────────────────────────────────
+// IS-04 Query API pagination: a bare query returns only the newest page of
+// results (descending update order). To get the full set we must walk both
+// rel="next" (X-Paging-Until -> paging.since; dead-ends almost immediately
+// since the base page is already the newest) and rel="prev" (X-Paging-Since
+// -> paging.until; where most long-lived resources actually live).
+const PAGING_TOKEN_RE = /^\d+:\d+$/; // "<seconds>:<nanoseconds>"
+const PAGING_MAX_PAGES = 200;
+
+function pagingAddAll(byId, list) {
+  for (const item of list) {
+    if (item && item.id) byId.set(item.id, item);
+  }
+}
+
+async function pagingWalk(baseUrl, sep, limitQS, startCursor, paramName, byId) {
+  let cursor = startCursor;
+  for (let i = 0; i < PAGING_MAX_PAGES && cursor; i++) {
+    if (!PAGING_TOKEN_RE.test(String(cursor))) break; // malformed header value from server, stop rather than send a broken URL
+    const pageUrl = `${baseUrl}${sep}${paramName}=${cursor}${limitQS}`;
+    let res;
+    try {
+      res = await window.api.fetch(pageUrl, { readBody: true });
+    } catch { break; }
+    if (!res.ok) break;
+    let list;
+    try { list = JSON.parse(res.text); } catch { break; }
+    if (!Array.isArray(list) || list.length === 0) break;
+    pagingAddAll(byId, list);
+    const headers = res.headers || {};
+    const nextCursor = paramName === 'paging.since' ? headers['x-paging-until'] : headers['x-paging-since'];
+    if (!nextCursor || nextCursor === cursor) break;
+    cursor = nextCursor;
+  }
+}
+
 async function apiFetch(url) {
   try {
     const res = await window.api.fetch(url, { readBody: true });
     if (!res.ok) return null;
-    return JSON.parse(res.text);
+    const first = JSON.parse(res.text);
+    if (!Array.isArray(first)) return first;
+
+    const byId = new Map();
+    pagingAddAll(byId, first);
+
+    const headers = res.headers || {};
+    const limit = headers['x-paging-limit'];
+    const limitQS = limit && /^\d+$/.test(String(limit)) ? `&paging.limit=${limit}` : '';
+    const sep = url.includes('?') ? '&' : '?';
+
+    await pagingWalk(url, sep, limitQS, headers['x-paging-until'], 'paging.since', byId);
+    await pagingWalk(url, sep, limitQS, headers['x-paging-since'], 'paging.until', byId);
+
+    return Array.from(byId.values());
   } catch { return null; }
 }
 
@@ -2056,10 +2105,8 @@ function renderTimeline(isNew = false) {
 }
 
 async function watchNodes() {
-  const res = await window.api.fetch(`${appState.queryBase}${QUERY_PATH}/nodes`, { readBody: true });
-  if (!res.ok) return;
-  let nodes;
-  try { nodes = JSON.parse(res.text); } catch { return; }
+  const nodes = await apiFetch(`${appState.queryBase}${QUERY_PATH}/nodes`);
+  if (!nodes) return;
 
   const newMap = new Map(nodes.map(n => [n.id, nodeLabel(n)]));
 
@@ -2085,10 +2132,8 @@ async function watchNodes() {
 }
 
 async function watchReceivers() {
-  const res = await window.api.fetch(`${appState.queryBase}${QUERY_PATH}/receivers`, { readBody: true });
-  if (!res.ok) return;
-  let receivers;
-  try { receivers = JSON.parse(res.text); } catch { return; }
+  const receivers = await apiFetch(`${appState.queryBase}${QUERY_PATH}/receivers`);
+  if (!receivers) return;
 
   const newMap = new Map(receivers.map(r => [r.id, { senderId: r.subscription?.sender_id || null, label: resourceLabel(r) }]));
 
@@ -2111,12 +2156,12 @@ let searchCache = null;
 async function fetchSearchCache() {
   const base = appState.queryBase + QUERY_PATH;
   const [nodes, devices, senders, receivers, flows, sources] = await Promise.all([
-    window.api.fetch(`${base}/nodes`,     { readBody: true }).then(r => r.ok ? JSON.parse(r.text) : []),
-    window.api.fetch(`${base}/devices`,   { readBody: true }).then(r => r.ok ? JSON.parse(r.text) : []),
-    window.api.fetch(`${base}/senders`,   { readBody: true }).then(r => r.ok ? JSON.parse(r.text) : []),
-    window.api.fetch(`${base}/receivers`, { readBody: true }).then(r => r.ok ? JSON.parse(r.text) : []),
-    window.api.fetch(`${base}/flows`,     { readBody: true }).then(r => r.ok ? JSON.parse(r.text) : []),
-    window.api.fetch(`${base}/sources`,   { readBody: true }).then(r => r.ok ? JSON.parse(r.text) : []),
+    apiFetch(`${base}/nodes`).then(r => r || []),
+    apiFetch(`${base}/devices`).then(r => r || []),
+    apiFetch(`${base}/senders`).then(r => r || []),
+    apiFetch(`${base}/receivers`).then(r => r || []),
+    apiFetch(`${base}/flows`).then(r => r || []),
+    apiFetch(`${base}/sources`).then(r => r || []),
   ]);
   searchCache = { nodes, devices, senders, receivers, flows, sources };
 }
