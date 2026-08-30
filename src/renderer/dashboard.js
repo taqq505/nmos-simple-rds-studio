@@ -335,6 +335,9 @@ function nodeApiBadges(n) {
 function resourceLabel(r) {
   return r.label?.trim() || r.id?.substring(0, 8) || '—';
 }
+function byLabel(a, b) {
+  return resourceLabel(a).localeCompare(resourceLabel(b), undefined, { numeric: true, sensitivity: 'base' });
+}
 function nodeIp(n) {
   return n.interfaces?.[0]?.ip || n.api?.endpoints?.[0]?.host || n.hostname || '—';
 }
@@ -759,9 +762,10 @@ function rebuildNodeList() {
   const openNodeIds = window._openNodeIds || new Set();
   const openDevIds  = window._openDevIds  || new Set();
 
-  const filtered = nodeSearch
+  const filtered = (nodeSearch
     ? nodes.filter(n => nodeLabel(n).toLowerCase().includes(nodeSearch) || nodeIp(n).toLowerCase().includes(nodeSearch))
-    : nodes;
+    : nodes
+  ).sort((a, b) => nodeLabel(a).localeCompare(nodeLabel(b), undefined, { numeric: true, sensitivity: 'base' }));
 
   if (!filtered.length) { body.innerHTML = emptyHtml(nodes.length ? 'No nodes match search' : 'No nodes registered'); return; }
 
@@ -770,7 +774,7 @@ function rebuildNodeList() {
   const rcvByDev  = groupBy(receivers, 'device_id');
 
   body.innerHTML = filtered.map(n => {
-    const devs = devByNode[n.id] || [];
+    const devs = (devByNode[n.id] || []).slice().sort(byLabel);
     const isOpen = openNodeIds.has(n.id);
     return `<div class="acc-card" data-node-id="${esc(n.id)}">
       <div class="acc-header" onclick="toggleNode('${esc(n.id)}')">
@@ -801,10 +805,10 @@ function rebuildNodeList() {
 
 function buildDeviceCard(dev, snds, rcvs, openDevIds, parentNode) {
   const isOpen = openDevIds.has(dev.id);
-  const senderChips = snds.map(s =>
+  const senderChips = snds.slice().sort(byLabel).map(s =>
     `<span class="resource-chip chip-sender" title="${esc(s.id)}" onclick="navToSender('${esc(s.id)}','${esc(nodeLabel(parentNode))}','${esc(resourceLabel(dev))}')">${esc(resourceLabel(s))}</span>`
   ).join('');
-  const receiverChips = rcvs.map(r =>
+  const receiverChips = rcvs.slice().sort(byLabel).map(r =>
     `<span class="resource-chip chip-receiver" title="${esc(r.id)}" onclick="navToReceiver('${esc(r.id)}','${esc(nodeLabel(parentNode))}','${esc(resourceLabel(dev))}')">${esc(resourceLabel(r))}</span>`
   ).join('');
 
@@ -979,6 +983,7 @@ function rebuildSenderList() {
     return true;
   });
   if (senderSearch) filtered = filtered.filter(s => resourceLabel(s).toLowerCase().includes(senderSearch));
+  filtered = filtered.sort(byLabel);
 
   if (!filtered.length) { body.innerHTML = emptyHtml(senders.length ? 'No senders match filter' : 'No senders registered'); return; }
 
@@ -1205,6 +1210,7 @@ function rebuildReceiverList() {
     if (receiversFilter === 'anc')   return fmt.includes('smpte291m') || fmt.includes('data');
     return true;
   });
+  filtered = filtered.sort(byLabel);
 
   if (!filtered.length) { body.innerHTML = emptyHtml(receivers.length ? 'No receivers match filter' : 'No receivers registered'); return; }
 
@@ -1374,6 +1380,7 @@ function rebuildFlowsList() {
     if (flowsFilter === 'anc')   return mt.includes('smpte291');
     return true;
   });
+  filtered = filtered.sort(byLabel);
 
   if (!filtered.length) { body.innerHTML = emptyHtml(`No ${flowsTab} match filter`); return; }
 
@@ -1447,12 +1454,14 @@ async function renderMap(el, isRefresh = false) {
     const connectedSIds = new Set(
       (rcvList || []).filter(r => r.subscription?.sender_id).map(r => r.subscription.sender_id)
     );
-    const filtSenders   = mapFilter === 'connected'
+    const filtSenders   = (mapFilter === 'connected'
       ? (sndList || []).filter(s => connectedSIds.has(s.id))
-      : (sndList || []);
-    const filtReceivers = mapFilter === 'connected'
+      : (sndList || [])
+    ).slice().sort(byLabel);
+    const filtReceivers = (mapFilter === 'connected'
       ? (rcvList || []).filter(r => r.subscription?.sender_id)
-      : (rcvList || []);
+      : (rcvList || [])
+    ).slice().sort(byLabel);
 
     body.innerHTML = `
       <div class="map-wrap" id="map-wrap">
