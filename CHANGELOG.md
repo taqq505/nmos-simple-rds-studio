@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.1] - 2026-08-31
+
+### Fixed
+- Query API list fetches (Nodes/Devices/Senders/Receivers/Flows/Sources) now paginate in both
+  directions using `X-Paging-*` headers, so resources beyond the registry's default page limit
+  are no longer silently dropped from every dashboard view
+- Nodes, Senders, Receivers, Flows/Sources, and Connection Map now sort resources by label in
+  natural/numeric order instead of raw registry return order
+
 ## [0.2.0] - 2026-04-29
 
 ### Overview
