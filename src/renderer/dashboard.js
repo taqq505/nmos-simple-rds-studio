@@ -250,18 +250,31 @@ async function pagingWalk(baseUrl, sep, limitQS, startCursor, paramName, byId) {
 
 async function apiFetch(url) {
   try {
-    const res = await window.api.fetch(url, { readBody: true });
+    let res = await window.api.fetch(url, { readBody: true });
     if (!res.ok) return null;
+    let headers = res.headers || {};
+
+    const sep = url.includes('?') ? '&' : '?';
+    const limit = headers['x-paging-limit'];
+    const limitQS = limit && /^\d+$/.test(String(limit)) ? `&paging.limit=${limit}` : '';
+
+    // Some registries (observed on Cerebrum) only report a correct X-Paging-Since
+    // on the base page when paging.limit is explicitly present in the request; an
+    // implicit-default-limit request gets back a bogus "0:0" that immediately
+    // terminates the prev-direction walk. Re-issue the base request with the
+    // limit made explicit before using it as the walk's starting point.
+    if (limitQS) {
+      try {
+        const explicitRes = await window.api.fetch(`${url}${limitQS}`, { readBody: true });
+        if (explicitRes.ok) { res = explicitRes; headers = res.headers || {}; }
+      } catch { /* fall back to the implicit-limit response below */ }
+    }
+
     const first = JSON.parse(res.text);
     if (!Array.isArray(first)) return first;
 
     const byId = new Map();
     pagingAddAll(byId, first);
-
-    const headers = res.headers || {};
-    const limit = headers['x-paging-limit'];
-    const limitQS = limit && /^\d+$/.test(String(limit)) ? `&paging.limit=${limit}` : '';
-    const sep = url.includes('?') ? '&' : '?';
 
     await pagingWalk(url, sep, limitQS, headers['x-paging-until'], 'paging.since', byId);
     await pagingWalk(url, sep, limitQS, headers['x-paging-since'], 'paging.until', byId);
