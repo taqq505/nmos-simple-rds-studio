@@ -265,7 +265,7 @@ async function apiFetch(url) {
     // limit made explicit before using it as the walk's starting point.
     if (limitQS) {
       try {
-        const explicitRes = await window.api.fetch(`${url}${limitQS}`, { readBody: true });
+        const explicitRes = await window.api.fetch(`${url}${sep}paging.limit=${limit}`, { readBody: true });
         if (explicitRes.ok) { res = explicitRes; headers = res.headers || {}; }
       } catch { /* fall back to the implicit-limit response below */ }
     }
