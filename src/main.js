@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: Apache-2.0
+// NMOS Simple RDS Studio — Copyright (c) 2026 taqq505
+// https://github.com/taqq505/nmos-simple-rds-studio
+
 const { app, BrowserWindow, ipcMain, dialog, shell, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
