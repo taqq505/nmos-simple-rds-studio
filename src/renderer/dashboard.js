@@ -351,8 +351,29 @@ function resourceLabel(r) {
 function byLabel(a, b) {
   return resourceLabel(a).localeCompare(resourceLabel(b), undefined, { numeric: true, sensitivity: 'base' });
 }
+function nodeEndpointHosts(n) {
+  return (n.api?.endpoints || []).map(e => e.host).filter(Boolean);
+}
+
 function nodeIp(n) {
-  return n.interfaces?.[0]?.ip || n.api?.endpoints?.[0]?.host || n.hostname || '—';
+  const hosts = nodeEndpointHosts(n);
+  let hrefHost = null;
+  try { hrefHost = n.href ? new URL(n.href).hostname : null; } catch { /* malformed href */ }
+  const preferred = hrefHost && hosts.includes(hrefHost) ? hrefHost : hosts[0];
+  return preferred || n.hostname || '—';
+}
+
+// Nodes commonly advertise more than one api.endpoints entry (redundant NICs,
+// management vs. media VLANs, etc.) and there's no spec-defined way to know
+// which one is "correct" for a given viewer's network. Surface the count/full
+// list rather than silently picking one that might not even be reachable.
+function nodeIpCell(n) {
+  const hosts = nodeEndpointHosts(n);
+  const extra = hosts.length > 1 ? hosts.length - 1 : 0;
+  const badge = extra
+    ? ` <span class="pill pill-gray" style="font-size:9px;padding:1px 5px;" title="${esc(hosts.join(', '))}">+${extra}</span>`
+    : '';
+  return `${esc(nodeIp(n))}${badge}`;
 }
 
 function toolbar(title, rightHtml = '') {
@@ -498,7 +519,7 @@ async function renderOverview(el, isRefresh = false) {
           <tbody>${nodes.map(n => `<tr style="cursor:pointer;" onclick="navToNode('${esc(n.id)}')">
             <td style="width:16px;"><span class="led-dot"></span></td>
             <td>${esc(nodeLabel(n))}</td>
-            <td><span style="font-family:monospace;font-size:12px;color:var(--text-mono)">${esc(nodeIp(n))}</span></td>
+            <td><span style="font-family:monospace;font-size:12px;color:var(--text-mono)">${nodeIpCell(n)}</span></td>
             <td>${devMap[n.id] || 0}</td>
           </tr>`).join('')}</tbody>
         </table>` : emptyHtml('No nodes registered')}
@@ -792,7 +813,7 @@ function rebuildNodeList() {
     return `<div class="acc-card" data-node-id="${esc(n.id)}">
       <div class="acc-header" onclick="toggleNode('${esc(n.id)}')">
         <span class="acc-label">${esc(nodeLabel(n))}</span>
-        <span class="acc-meta" style="font-family:monospace">${esc(nodeIp(n))}</span>
+        <span class="acc-meta" style="font-family:monospace">${nodeIpCell(n)}</span>
         <span class="count-badge" style="margin-left:4px">${devs.length} device${devs.length!==1?'s':''}</span>
         ${nodeApiBadges(n)}
         <span class="acc-chevron" id="chev-node-${esc(n.id)}" style="${isOpen?'transform:rotate(90deg)':''}">▶</span>
@@ -802,6 +823,7 @@ function rebuildNodeList() {
           <span class="dg-key">ID</span><span class="dg-val">${esc(n.id)}</span>
           <span class="dg-key">API</span><span class="dg-val">${(n.api?.versions||[]).join(', ') || '—'}</span>
           <span class="dg-key">Hostname</span><span class="dg-val">${esc(n.hostname || '—')}</span>
+          ${nodeEndpointHosts(n).length > 1 ? `<span class="dg-key">Endpoints</span><span class="dg-val" style="font-family:monospace">${esc(nodeEndpointHosts(n).join(', '))}</span>` : ''}
           <span class="dg-key">Description</span><span class="dg-val">${esc(n.description || '—')}</span>
         </div>
         <div style="font-size:10px;color:var(--text-tertiary);letter-spacing:0.04em;margin:10px 0 6px">DEVICES</div>
