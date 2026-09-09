@@ -351,16 +351,22 @@ function resourceLabel(r) {
 function byLabel(a, b) {
   return resourceLabel(a).localeCompare(resourceLabel(b), undefined, { numeric: true, sensitivity: 'base' });
 }
-function nodeEndpointHosts(n) {
-  return (n.api?.endpoints || []).map(e => e.host).filter(Boolean);
+function nodeEndpoints(n) {
+  return n.api?.endpoints || [];
+}
+function endpointLabel(e) {
+  return e.port ? `${e.host}:${e.port}` : e.host;
+}
+function endpointUrl(e) {
+  return `${e.protocol || 'http'}://${e.host}${e.port ? ':' + e.port : ''}/`;
 }
 
 function nodeIp(n) {
-  const hosts = nodeEndpointHosts(n);
+  const endpoints = nodeEndpoints(n);
   let hrefHost = null;
   try { hrefHost = n.href ? new URL(n.href).hostname : null; } catch { /* malformed href */ }
-  const preferred = hrefHost && hosts.includes(hrefHost) ? hrefHost : hosts[0];
-  return preferred || n.hostname || '—';
+  const preferred = (hrefHost && endpoints.find(e => e.host === hrefHost)) || endpoints[0];
+  return preferred ? endpointLabel(preferred) : (n.hostname || '—');
 }
 
 // Nodes commonly advertise more than one api.endpoints entry (redundant NICs,
@@ -368,12 +374,61 @@ function nodeIp(n) {
 // which one is "correct" for a given viewer's network. Surface the count/full
 // list rather than silently picking one that might not even be reachable.
 function nodeIpCell(n) {
-  const hosts = nodeEndpointHosts(n);
-  const extra = hosts.length > 1 ? hosts.length - 1 : 0;
+  const endpoints = nodeEndpoints(n);
+  const extra = endpoints.length > 1 ? endpoints.length - 1 : 0;
   const badge = extra
-    ? ` <span class="pill pill-gray" style="font-size:9px;padding:1px 5px;" title="${esc(hosts.join(', '))}">+${extra}</span>`
+    ? ` <span class="pill pill-gray endpoint-badge" style="font-size:9px;padding:1px 5px;cursor:default;"
+        data-endpoints='${esc(JSON.stringify(endpoints))}'
+        onmouseenter="showEndpointTip(this)" onmouseleave="hideHoverTip()">+${extra}</span>`
     : '';
   return `${esc(nodeIp(n))}${badge}`;
+}
+
+// ─── Generic hover tooltip ──────────────────────────────────────────────────
+// A styled, viewport-clamped replacement for the native title="" tooltip,
+// which can't be styled and clips at window edges.
+let hoverTipEl = null;
+function ensureHoverTip() {
+  if (hoverTipEl) return hoverTipEl;
+  hoverTipEl = document.createElement('div');
+  hoverTipEl.id = 'hover-tip';
+  hoverTipEl.style.cssText = 'position:fixed;z-index:1000;background:var(--bg-primary);color:var(--text-primary);' +
+    'border:0.5px solid var(--border-default);font-size:11px;font-family:monospace;border-radius:8px;' +
+    'padding:6px 10px;pointer-events:none;display:none;line-height:1.7;' +
+    'box-shadow:0 4px 16px rgba(0,0,0,0.12);white-space:nowrap;';
+  document.body.appendChild(hoverTipEl);
+  return hoverTipEl;
+}
+function showHoverTip(anchorEl, html) {
+  const tip = ensureHoverTip();
+  tip.innerHTML = html;
+  tip.style.left = '0px';
+  tip.style.top = '0px';
+  tip.style.display = 'block';
+  const a = anchorEl.getBoundingClientRect();
+  const t = tip.getBoundingClientRect();
+  let left = a.left;
+  let top = a.bottom + 6;
+  if (left + t.width > window.innerWidth - 8) left = window.innerWidth - t.width - 8;
+  if (left < 8) left = 8;
+  if (top + t.height > window.innerHeight - 8) top = a.top - t.height - 6;
+  tip.style.left = `${left}px`;
+  tip.style.top = `${top}px`;
+}
+function hideHoverTip() {
+  if (hoverTipEl) hoverTipEl.style.display = 'none';
+}
+function showEndpointTip(el) {
+  let endpoints = [];
+  try { endpoints = JSON.parse(el.dataset.endpoints); } catch { return; }
+  showHoverTip(el, endpoints.map(e => esc(endpointLabel(e))).join('<br>'));
+}
+
+function endpointChips(n) {
+  return nodeEndpoints(n).map(e => {
+    const url = endpointUrl(e);
+    return `<span class="endpoint-chip" title="${esc(url)}" onclick="window.api.openExternal('${esc(url)}')">${esc(endpointLabel(e))}</span>`;
+  }).join('');
 }
 
 function toolbar(title, rightHtml = '') {
@@ -823,7 +878,7 @@ function rebuildNodeList() {
           <span class="dg-key">ID</span><span class="dg-val">${esc(n.id)}</span>
           <span class="dg-key">API</span><span class="dg-val">${(n.api?.versions||[]).join(', ') || '—'}</span>
           <span class="dg-key">Hostname</span><span class="dg-val">${esc(n.hostname || '—')}</span>
-          ${nodeEndpointHosts(n).length > 1 ? `<span class="dg-key">Endpoints</span><span class="dg-val" style="font-family:monospace">${esc(nodeEndpointHosts(n).join(', '))}</span>` : ''}
+          ${nodeEndpoints(n).length > 1 ? `<span class="dg-key">Endpoints</span><span class="dg-val"><div class="chips-wrap">${endpointChips(n)}</div></span>` : ''}
           <span class="dg-key">Description</span><span class="dg-val">${esc(n.description || '—')}</span>
         </div>
         <div style="font-size:10px;color:var(--text-tertiary);letter-spacing:0.04em;margin:10px 0 6px">DEVICES</div>

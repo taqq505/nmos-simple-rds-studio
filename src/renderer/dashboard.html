@@ -343,6 +343,12 @@
     .chip-receiver { border-color: #AFA9EC; color: var(--purple-600); }
     .chip-source   { border-color: #FAC775; color: var(--amber-600); }
     .chip-hint { font-size: 10px; color: var(--text-tertiary); font-style: italic; margin-top: 4px; }
+    .endpoint-chip {
+      font-size: 11px; padding: 3px 9px; border-radius: 99px; border: 0.5px solid var(--border-default);
+      background: var(--bg-primary); font-family: monospace; cursor: pointer; color: var(--text-secondary);
+      display: inline-block; transition: background 0.15s, color 0.15s, border-color 0.15s;
+    }
+    .endpoint-chip:hover { background: var(--blue-50); color: var(--blue-800); border-color: #B5D4F4; }
 
     /* ── Detail Grid ── */
     .detail-grid { display: grid; grid-template-columns: 100px 1fr; gap: 4px 10px; font-size: 12px; margin-bottom: 10px; }

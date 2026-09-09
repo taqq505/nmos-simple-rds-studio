@@ -32,6 +32,9 @@
         ]
       }
     ],
+    "portable": {
+      "splashImage": "src/assets/splash.bmp"
+    },
     "win": {
       "target": [
         {
