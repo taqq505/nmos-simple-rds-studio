@@ -24,10 +24,7 @@
 
   <text x="230" y="168" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="21" font-weight="600" fill="#111111">NMOS Simple RDS Studio</text>
 
-  <g transform="translate(184,196)">
-    <circle cx="8" cy="8" r="8" fill="none" stroke="#185FA5" stroke-width="2.5" stroke-dasharray="35 12"/>
-    <text x="26" y="13" font-family="Segoe UI, Arial, sans-serif" font-size="13" fill="#666666">Starting…</text>
-  </g>
+  <text x="230" y="207" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="13" fill="#666666">Preparing application files…</text>
 
   <text x="230" y="298" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="10" fill="#bbbbbb">Please wait, this window will close automatically</text>
 </svg>
