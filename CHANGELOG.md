@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.2] - 2026-11-06
+
+### Added
+- Portable `.exe` now shows a splash image while it self-extracts on launch, so the app no longer
+  appears unresponsive during startup
+
+### Changed
+- Node endpoint addresses are now shown as `host:port` everywhere (IP column, endpoint chips),
+  since NMOS Node APIs commonly run on non-standard ports
+- Nodes detail view lists every endpoint as a clickable chip that opens it in the browser
+
+### Fixed
+- Pagination fix from 0.2.1 now works against registries (observed on Cerebrum) that only return
+  a valid `X-Paging-Since` when `paging.limit` is explicit: the first page is re-requested with an
+  explicit limit before paging through results, so resources beyond the first page are no longer dropped
+- Node IP no longer blindly uses the first entry of `api.endpoints` (IS-04 defines no ordering);
+  the endpoint matching the node's `href` host is preferred, and nodes with multiple endpoints show
+  a `+N` badge with a tooltip listing all of them
+- Multi-endpoint tooltip follows the light/dark theme and no longer clips at the window edge
+
 ## [0.2.1] - 2026-08-31
 
 ### Fixed
